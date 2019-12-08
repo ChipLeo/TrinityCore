@@ -28,7 +28,8 @@ void WorldSession::HandleBattlePetRequestJournal(WorldPackets::BattlePet::Battle
 void WorldSession::HandleBattlePetSetBattleSlot(WorldPackets::BattlePet::BattlePetSetBattleSlot& battlePetSetBattleSlot)
 {
     if (BattlePetMgr::BattlePet* pet = GetBattlePetMgr()->GetPet(battlePetSetBattleSlot.PetGuid))
-        GetBattlePetMgr()->GetSlot(battlePetSetBattleSlot.Slot)->Pet = pet->PacketInfo;
+        if (WorldPackets::BattlePet::BattlePetSlot* slot = GetBattlePetMgr()->GetSlot(battlePetSetBattleSlot.Slot))
+            slot->Pet = pet->PacketInfo;
 }
 
 void WorldSession::HandleBattlePetModifyName(WorldPackets::BattlePet::BattlePetModifyName& battlePetModifyName)
@@ -68,7 +69,7 @@ void WorldSession::HandleCageBattlePet(WorldPackets::BattlePet::CageBattlePet& c
 
 void WorldSession::HandleBattlePetSummon(WorldPackets::BattlePet::BattlePetSummon& battlePetSummon)
 {
-    if (_player->GetGuidValue(ACTIVE_PLAYER_FIELD_SUMMONED_BATTLE_PET_ID) != battlePetSummon.PetGuid)
+    if (*_player->m_activePlayerData->SummonedBattlePetGUID != battlePetSummon.PetGuid)
         GetBattlePetMgr()->SummonPet(battlePetSummon.PetGuid);
     else
         GetBattlePetMgr()->DismissPet();

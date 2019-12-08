@@ -172,8 +172,8 @@ class TC_GAME_API Channel
     };
 
     public:
-        Channel(uint32 channelId, uint32 team = 0, AreaTableEntry const* zoneEntry = nullptr);  // built-in channel ctor
-        Channel(std::string const& name, uint32 team = 0);                                      // custom player channel ctor
+        Channel(ObjectGuid const& guid, uint32 channelId, uint32 team = 0, AreaTableEntry const* zoneEntry = nullptr);  // built-in channel ctor
+        Channel(ObjectGuid const& guid, std::string const& name, uint32 team = 0);                                      // custom player channel ctor
 
         static void GetChannelName(std::string& channelName, uint32 channelId, LocaleConstant locale, AreaTableEntry const* zoneEntry);
         std::string GetName(LocaleConstant locale = DEFAULT_LOCALE) const;
@@ -222,7 +222,7 @@ class TC_GAME_API Channel
         void List(Player const* player);
         void Announce(Player const* player);
         void Say(ObjectGuid const& guid, std::string const& what, uint32 lang) const;
-        void AddonSay(ObjectGuid const& guid, std::string const& prefix, std::string const& what) const;
+        void AddonSay(ObjectGuid const& guid, std::string const& prefix, std::string const& what, bool isLogged) const;
         void DeclineInvite(Player const* player);
         void Invite(Player const* player, std::string const& newp);
         void JoinNotify(Player const* player);
@@ -269,6 +269,7 @@ class TC_GAME_API Channel
         uint8 _channelFlags;
         uint32 _channelId;
         uint32 _channelTeam;
+        ObjectGuid _channelGuid;
         ObjectGuid _ownerGuid;
         std::string _channelName;
         std::string _channelPassword;

@@ -413,15 +413,16 @@ void WorldSession::HandleChatMessage(ChatMsg type, uint32 lang, std::string msg,
 
 void WorldSession::HandleChatAddonMessageOpcode(WorldPackets::Chat::ChatAddonMessage& chatAddonMessage)
 {
-    HandleChatAddonMessage(chatAddonMessage.Params.Type, chatAddonMessage.Params.Prefix, chatAddonMessage.Params.Text);
+    HandleChatAddonMessage(chatAddonMessage.Params.Type, chatAddonMessage.Params.Prefix, chatAddonMessage.Params.Text, chatAddonMessage.Params.IsLogged);
 }
 
 void WorldSession::HandleChatAddonMessageTargetedOpcode(WorldPackets::Chat::ChatAddonMessageTargeted& chatAddonMessageTargeted)
 {
-    HandleChatAddonMessage(chatAddonMessageTargeted.Params.Type, chatAddonMessageTargeted.Params.Prefix, chatAddonMessageTargeted.Params.Text, chatAddonMessageTargeted.Target);
+    HandleChatAddonMessage(chatAddonMessageTargeted.Params.Type, chatAddonMessageTargeted.Params.Prefix, chatAddonMessageTargeted.Params.Text,
+        chatAddonMessageTargeted.Params.IsLogged, chatAddonMessageTargeted.Target);
 }
 
-void WorldSession::HandleChatAddonMessage(ChatMsg type, std::string prefix, std::string text, std::string target /*= ""*/)
+void WorldSession::HandleChatAddonMessage(ChatMsg type, std::string prefix, std::string text, bool isLogged, std::string target /*= ""*/)
 {
     Player* sender = GetPlayer();
 
@@ -439,7 +440,7 @@ void WorldSession::HandleChatAddonMessage(ChatMsg type, std::string prefix, std:
         {
             if (sender->GetGuildId())
                 if (Guild* guild = sGuildMgr->GetGuildById(sender->GetGuildId()))
-                    guild->BroadcastAddonToGuild(this, type == CHAT_MSG_OFFICER, text, prefix);
+                    guild->BroadcastAddonToGuild(this, type == CHAT_MSG_OFFICER, text, prefix, isLogged);
             break;
         }
         case CHAT_MSG_WHISPER:
@@ -454,7 +455,7 @@ void WorldSession::HandleChatAddonMessage(ChatMsg type, std::string prefix, std:
             if (!receiver)
                 break;
 
-            sender->WhisperAddon(text, prefix, receiver);
+            sender->WhisperAddon(text, prefix, isLogged, receiver);
             break;
         }
         // Messages sent to "RAID" while in a party will get delivered to "PARTY"
@@ -478,14 +479,14 @@ void WorldSession::HandleChatAddonMessage(ChatMsg type, std::string prefix, std:
             }
 
             WorldPackets::Chat::Chat packet;
-            packet.Initialize(type, LANG_ADDON, sender, nullptr, text, 0, "", DEFAULT_LOCALE, prefix);
+            packet.Initialize(type, isLogged ? LANG_ADDON_LOGGED : LANG_ADDON, sender, nullptr, text, 0, "", DEFAULT_LOCALE, prefix);
             group->BroadcastAddonMessagePacket(packet.Write(), prefix, true, subGroup, sender->GetGUID());
             break;
         }
         case CHAT_MSG_CHANNEL:
         {
             if (Channel* chn = ChannelMgr::GetChannelForPlayerByNamePart(target, sender))
-                chn->AddonSay(sender->GetGUID(), prefix, text.c_str());
+                chn->AddonSay(sender->GetGUID(), prefix, text.c_str(), isLogged);
             break;
         }
         default:
@@ -526,6 +527,9 @@ void WorldSession::HandleChatMessageAFKOpcode(WorldPackets::Chat::ChatMessageAFK
         sender->ToggleAFK();
     }
 
+    if (Guild* guild = sender->GetGuild())
+        guild->SendEventAwayChanged(sender->GetGUID(), sender->isAFK(), sender->isDND());
+
     sScriptMgr->OnPlayerChat(sender, CHAT_MSG_AFK, LANG_UNIVERSAL, chatMessageAFK.Text);
 }
 
@@ -559,6 +563,9 @@ void WorldSession::HandleChatMessageDNDOpcode(WorldPackets::Chat::ChatMessageDND
         sender->ToggleDND();
     }
 
+    if (Guild* guild = sender->GetGuild())
+        guild->SendEventAwayChanged(sender->GetGUID(), sender->isAFK(), sender->isDND());
+
     sScriptMgr->OnPlayerChat(sender, CHAT_MSG_DND, LANG_UNIVERSAL, chatMessageDND.Text);
 }
 
@@ -569,8 +576,7 @@ void WorldSession::HandleEmoteOpcode(WorldPackets::Chat::EmoteClient& /* packet 
 
     sScriptMgr->OnPlayerClearEmote(GetPlayer());
 
-    if (_player->GetUInt32Value(UNIT_NPC_EMOTESTATE))
-        _player->SetUInt32Value(UNIT_NPC_EMOTESTATE, 0);
+    _player->SetEmoteState(EMOTE_ONESHOT_NONE);
 }
 
 void WorldSession::HandleTextEmoteOpcode(WorldPackets::Chat::CTextEmote& packet)
@@ -602,7 +608,7 @@ void WorldSession::HandleTextEmoteOpcode(WorldPackets::Chat::CTextEmote& packet)
             break;
         case EMOTE_STATE_DANCE:
         case EMOTE_STATE_READ:
-            _player->SetUInt32Value(UNIT_NPC_EMOTESTATE, emoteAnim);
+            _player->SetEmoteState(Emote(emoteAnim));
             break;
         default:
             // Only allow text-emotes for "dead" entities (feign death included)

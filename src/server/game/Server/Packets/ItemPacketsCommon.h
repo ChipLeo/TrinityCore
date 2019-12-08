@@ -25,9 +25,14 @@
 
 class ByteBuffer;
 class Item;
-struct ItemDynamicFieldGems;
 struct LootItem;
 struct VoidStorageItem;
+enum class ItemContext : uint8;
+
+namespace UF
+{
+    struct SocketedGem;
+}
 
 namespace WorldPackets
 {
@@ -35,7 +40,7 @@ namespace WorldPackets
     {
         struct ItemBonusInstanceData
         {
-            uint8 Context = 0;
+            ItemContext Context = ItemContext(0);
             std::vector<int32> BonusListIDs;
 
             bool operator==(ItemBonusInstanceData const& r) const;
@@ -45,13 +50,11 @@ namespace WorldPackets
         struct ItemInstance
         {
             void Initialize(::Item const* item);
-            void Initialize(::ItemDynamicFieldGems const* gem);
+            void Initialize(UF::SocketedGem const* gem);
             void Initialize(::LootItem const& lootItem);
             void Initialize(::VoidStorageItem const* voidItem);
 
             uint32 ItemID = 0;
-            uint32 RandomPropertiesSeed = 0;
-            uint32 RandomPropertiesID = 0;
             Optional<ItemBonusInstanceData> ItemBonus;
             Optional<CompactArray<int32>> Modifications;
 

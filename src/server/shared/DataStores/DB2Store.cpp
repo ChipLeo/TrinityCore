@@ -36,52 +36,51 @@ DB2StorageBase::~DB2StorageBase()
 
 void DB2StorageBase::WriteRecordData(char const* entry, uint32 locale, ByteBuffer& buffer) const
 {
-    std::size_t i = 0;
     if (!_loadInfo->Meta->HasIndexFieldInData())
-    {
         entry += 4;
-        ++i;
-    }
 
-    for (; i < _loadInfo->FieldCount; ++i)
+    for (uint32 i = 0; i < _loadInfo->Meta->FieldCount; ++i)
     {
-        switch (_loadInfo->TypesString[i])
+        for (uint8 arr = 0; arr < _loadInfo->Meta->Fields[i].ArraySize; ++arr)
         {
-            case FT_INT:
-                buffer << *(uint32*)entry;
-                entry += 4;
-                break;
-            case FT_FLOAT:
-                buffer << *(float*)entry;
-                entry += 4;
-                break;
-            case FT_BYTE:
-                buffer << *(uint8*)entry;
-                entry += 1;
-                break;
-            case FT_SHORT:
-                buffer << *(uint16*)entry;
-                entry += 2;
-                break;
-            case FT_LONG:
-                buffer << *(uint64*)entry;
-                entry += 8;
-                break;
-            case FT_STRING:
+            switch (_loadInfo->Meta->Fields[i].Type)
             {
-                LocalizedString* locStr = *(LocalizedString**)entry;
-                if (locStr->Str[locale][0] == '\0')
-                    locale = 0;
+                case FT_INT:
+                    buffer << *(uint32*)entry;
+                    entry += 4;
+                    break;
+                case FT_FLOAT:
+                    buffer << *(float*)entry;
+                    entry += 4;
+                    break;
+                case FT_BYTE:
+                    buffer << *(uint8*)entry;
+                    entry += 1;
+                    break;
+                case FT_SHORT:
+                    buffer << *(uint16*)entry;
+                    entry += 2;
+                    break;
+                case FT_LONG:
+                    buffer << *(uint64*)entry;
+                    entry += 8;
+                    break;
+                case FT_STRING:
+                {
+                    LocalizedString* locStr = *(LocalizedString**)entry;
+                    if (locStr->Str[locale][0] == '\0')
+                        locale = 0;
 
-                buffer << locStr->Str[locale];
-                entry += sizeof(LocalizedString*);
-                break;
-            }
-            case FT_STRING_NOT_LOCALIZED:
-            {
-                buffer << *(char const**)entry;
-                entry += sizeof(char const*);
-                break;
+                    buffer << locStr->Str[locale];
+                    entry += sizeof(LocalizedString*);
+                    break;
+                }
+                case FT_STRING_NOT_LOCALIZED:
+                {
+                    buffer << *(char const**)entry;
+                    entry += sizeof(char const*);
+                    break;
+                }
             }
         }
     }
@@ -91,12 +90,10 @@ bool DB2StorageBase::Load(std::string const& path, uint32 locale, char**& indexT
 {
     indexTable = nullptr;
     DB2FileLoader db2;
-    {
-        DB2FileSystemSource source(path + _fileName);
-        // Check if load was successful, only then continue
-        if (!db2.Load(&source, _loadInfo))
-            return false;
-    }
+    DB2FileSystemSource source(path + _fileName);
+    // Check if load was successful, only then continue
+    if (!db2.Load(&source, _loadInfo))
+        return false;
 
     _fieldCount = db2.GetCols();
     _tableHash = db2.GetTableHash();
@@ -123,12 +120,10 @@ bool DB2StorageBase::LoadStringsFrom(std::string const& path, uint32 locale, cha
         return false;
 
     DB2FileLoader db2;
-    {
-        DB2FileSystemSource source(path + _fileName);
-        // Check if load was successful, only then continue
-        if (!db2.Load(&source, _loadInfo))
-            return false;
-    }
+    DB2FileSystemSource source(path + _fileName);
+    // Check if load was successful, only then continue
+    if (!db2.Load(&source, _loadInfo))
+        return false;
 
     // load strings from another locale db2 data
     if (_loadInfo->GetStringFieldCount(true))
