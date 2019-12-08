@@ -30,24 +30,24 @@ struct DB2Meta;
 struct DB2Header
 {
     uint32 Signature;
-    uint32 RecordCount;
-    uint32 FieldCount;
+    uint32 RecordsCount;
+    uint32 FieldsCount;
     uint32 RecordSize;
     uint32 StringTableSize;
     uint32 TableHash;
     uint32 LayoutHash;
-    uint32 MinId;
-    uint32 MaxId;
+    uint32 MinIndex;
+    uint32 MaxIndex;
     uint32 Locale;
     uint16 Flags;
-    int16 IndexField;
-    uint32 TotalFieldCount;
+    int16 IdFieldIndex;
+    uint32 TotalFieldsCount;
     uint32 PackedDataOffset;
-    uint32 ParentLookupCount;
-    uint32 ColumnMetaSize;
+    uint32 LookupColumnsCount;
+    uint32 ColumnMetaDataSize;
     uint32 CommonDataSize;
     uint32 PalletDataSize;
-    uint32 SectionCount;
+    uint32 SectionsCount;
 };
 #pragma pack(pop)
 
