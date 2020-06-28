@@ -254,6 +254,9 @@ class npc_voidtraveler : public CreatureScript
 
             void UpdateAI(uint32 diff) override
             {
+                if (!UpdateVictim())
+                    return;
+
                 if (_moveTimer <= diff)
                 {
                     Creature* Vorpil = ObjectAccessor::GetCreature(*me, _instance->GetGuidData(DATA_GRANDMASTER_VORPIL));
