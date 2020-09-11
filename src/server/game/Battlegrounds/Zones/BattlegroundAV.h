@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2008-2019 TrinityCore <https://www.trinitycore.org/>
- * Copyright (C) 2005-2009 MaNGOS <http://getmangos.com/>
+ * This file is part of the TrinityCore Project. See AUTHORS file for Copyright information
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -1625,7 +1624,7 @@ struct BattlegroundAVScore final : public BattlegroundScore
 class BattlegroundAV : public Battleground
 {
     public:
-        BattlegroundAV();
+        BattlegroundAV(BattlegroundTemplate const* battlegroundTemplate);
         ~BattlegroundAV();
 
         /* inherited from BattlegroundClass */
@@ -1651,7 +1650,7 @@ class BattlegroundAV : public Battleground
 
         void EndBattleground(uint32 winner) override;
 
-        WorldSafeLocsEntry const* GetClosestGraveYard(Player* player) override;
+        WorldSafeLocsEntry const* GetClosestGraveyard(Player* player) override;
         WorldSafeLocsEntry const* GetExploitTeleportLocation(Team team) override;
 
         // Achievement: Av perfection and Everything counts
@@ -1688,7 +1687,7 @@ class BattlegroundAV : public Battleground
         bool IsTower(BG_AV_Nodes node) { return m_Nodes[node].Tower; }
 
         /*mine*/
-        void ChangeMineOwner(uint8 mine, uint32 team, bool initial=false);
+        void ChangeMineOwner(uint8 mine, uint32 team, bool initial = false);
 
         /*worldstates*/
         void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& packet) override;

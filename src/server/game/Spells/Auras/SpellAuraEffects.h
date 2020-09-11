@@ -1,6 +1,5 @@
 /*
- * Copyright (C) 2008-2019 TrinityCore <https://www.trinitycore.org/>
- * Copyright (C) 2005-2009 MaNGOS <http://getmangos.com/>
+ * This file is part of the TrinityCore Project. See AUTHORS file for Copyright information
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -151,6 +150,7 @@ class TC_GAME_API AuraEffect
         void HandleModStealth(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleModStealthLevel(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleModStealthDetect(AuraApplication const* aurApp, uint8 mode, bool apply) const;
+        void HandleDetectAmore(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleSpiritOfRedemption(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleAuraGhost(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandlePhase(AuraApplication const* aurApp, uint8 mode, bool apply) const;
@@ -291,6 +291,7 @@ class TC_GAME_API AuraEffect
         void HandleModDamagePercentDone(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleModOffhandDamagePercent(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleShieldBlockValue(AuraApplication const* aurApp, uint8 mode, bool apply) const;
+        void HandleShieldBlockValuePercent(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         //  power cost
         void HandleModPowerCostPCT(AuraApplication const* aurApp, uint8 mode, bool apply) const;
         void HandleModPowerCost(AuraApplication const* aurApp, uint8 mode, bool apply) const;

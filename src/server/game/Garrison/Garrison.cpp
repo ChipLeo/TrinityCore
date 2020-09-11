@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008-2019 TrinityCore <https://www.trinitycore.org/>
+ * This file is part of the TrinityCore Project. See AUTHORS file for Copyright information
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -683,7 +683,7 @@ template<class T, void(T::*SecondaryRelocate)(float,float,float,float)>
 T* BuildingSpawnHelper(GameObject* building, ObjectGuid::LowType spawnId, Map* map)
 {
     T* spawn = new T();
-    if (!spawn->LoadFromDB(spawnId, map))
+    if (!spawn->LoadFromDB(spawnId, map, false, false))
     {
         delete spawn;
         return nullptr;
