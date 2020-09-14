@@ -2876,6 +2876,8 @@ void Guild::_SendBankList(WorldSession* session /* = nullptr*/, uint8 tabId /*= 
                     itemInfo.Count = int32(tabItem->GetCount());
                     itemInfo.Charges = int32(abs(tabItem->GetSpellCharges()));
                     itemInfo.EnchantmentID = int32(tabItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));
+                    itemInfo.RandomPropertiesID = int32(tabItem->GetItemRandomPropertyId());
+                    itemInfo.RandomPropertiesSeed = int32(tabItem->GetItemSuffixFactor());
                     itemInfo.Flags = tabItem->GetInt32Value(ITEM_FIELD_FLAGS);
 
                     for (uint32 socketSlot = 0; socketSlot < MAX_GEM_SOCKETS; ++socketSlot)
