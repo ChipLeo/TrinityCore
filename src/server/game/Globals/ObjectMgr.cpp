@@ -2314,7 +2314,6 @@ ObjectGuid::LowType ObjectMgr::AddGameObjectData(uint32 entry, uint32 mapId, Pos
     return spawnId;
 }
 
-
 ObjectGuid::LowType ObjectMgr::AddCreatureData(uint32 entry, uint32 mapId, Position const& pos, uint32 spawntimedelay /*= 0*/)
 {
     CreatureTemplate const* cInfo = GetCreatureTemplate(entry);
@@ -2717,6 +2716,12 @@ void ObjectMgr::LoadInstanceSpawnGroups()
         }
         else
             info.Flags = flags;
+
+        if ((flags & InstanceSpawnGroupInfo::FLAG_ALLIANCE_ONLY) && (flags & InstanceSpawnGroupInfo::FLAG_HORDE_ONLY))
+        {
+            info.Flags = flags & ~(InstanceSpawnGroupInfo::FLAG_ALLIANCE_ONLY | InstanceSpawnGroupInfo::FLAG_HORDE_ONLY);
+            TC_LOG_ERROR("sql.sql", "Instance spawn group (%u,%u) FLAG_ALLIANCE_ONLY and FLAG_HORDE_ONLY may not be used together in a single entry - truncated to %u.", instanceMapId, spawnGroupId, info.Flags);
+        }
 
         ++n;
     } while (result->NextRow());
@@ -3572,6 +3577,41 @@ void ObjectMgr::LoadVehicleTemplateAccessories()
     TC_LOG_INFO("server.loading", ">> Loaded %u Vehicle Template Accessories in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
 }
 
+void ObjectMgr::LoadVehicleTemplate()
+{
+    uint32 oldMSTime = getMSTime();
+
+    _vehicleTemplateStore.clear();
+
+    //                                               0           1
+    QueryResult result = WorldDatabase.Query("SELECT creatureId, despawnDelayMs FROM vehicle_template");
+
+    if (!result)
+    {
+        TC_LOG_INFO("server.loading", ">> Loaded 0 vehicle template. DB table `vehicle_template` is empty.");
+        return;
+    }
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint32 creatureId = fields[0].GetUInt32();
+
+        if (!sObjectMgr->GetCreatureTemplate(creatureId))
+        {
+            TC_LOG_ERROR("sql.sql", "Table `vehicle_template`: Vehicle %u does not exist.", creatureId);
+            continue;
+        }
+
+        VehicleTemplate& vehicleTemplate = _vehicleTemplateStore[creatureId];
+        vehicleTemplate.DespawnDelay = Milliseconds(fields[1].GetInt32());
+
+    } while (result->NextRow());
+
+    TC_LOG_INFO("server.loading", ">> Loaded " SZFMTD " Vehicle Template entries in %u ms", _vehicleTemplateStore.size(), GetMSTimeDiffToNow(oldMSTime));
+}
+
 void ObjectMgr::LoadVehicleAccessories()
 {
     uint32 oldMSTime = getMSTime();
@@ -3963,7 +4003,6 @@ void ObjectMgr::LoadPlayerInfo()
             TC_LOG_INFO("server.loading", ">> Loaded %u custom player create items in %u ms", count, GetMSTimeDiffToNow(oldMSTime));
         }
     }
-
 
     // Load playercreate skills
     TC_LOG_INFO("server.loading", "Loading Player Create Skill Data...");
@@ -6125,7 +6164,6 @@ void ObjectMgr::LoadGossipText()
         "text7_0, text7_1, BroadcastTextID7, lang7, Probability7, EmoteDelay7_0, Emote7_0, EmoteDelay7_1, Emote7_1, EmoteDelay7_2, Emote7_2 "
         "FROM npc_text");
 
-
     if (!result)
     {
         TC_LOG_INFO("server.loading", ">> Loaded 0 npc texts, table is empty!");
@@ -6183,7 +6221,6 @@ void ObjectMgr::LoadGossipText()
                     TC_LOG_ERROR("sql.sql", "GossipText (Id: %u) in table `npc_text` has non-existing or incompatible BroadcastTextID%u %u.", id, i, gOption.BroadcastTextID);
                     gOption.BroadcastTextID = 0;
                 }
-
 
             }
         }
@@ -7040,7 +7077,6 @@ void ObjectMgr::RemoveGraveyardLink(uint32 id, uint32 zoneId, uint32 team, bool 
     }
 
     bool found = false;
-
 
     for (; range.first != range.second; ++range.first)
     {
@@ -9202,7 +9238,10 @@ void ObjectMgr::LoadTrainers()
                     break;
             }
 
-            _trainers.emplace(std::piecewise_construct, std::forward_as_tuple(trainerId), std::forward_as_tuple(trainerId, trainerType, requirement, std::move(greeting), std::move(spells)));
+            auto [it, isNew] = _trainers.emplace(std::piecewise_construct, std::forward_as_tuple(trainerId), std::forward_as_tuple(trainerId, trainerType, requirement, std::move(greeting), std::move(spells)));
+            ASSERT(isNew);
+            if (trainerType == Trainer::Type::Class)
+                _classTrainers[requirement].push_back(&it->second);
         } while (trainersResult->NextRow());
     }
 
@@ -9671,7 +9710,6 @@ std::string const& ObjectMgr::GetScriptName(uint32 id) const
     return (id < _scriptNamesStore.size()) ? _scriptNamesStore[id] : empty;
 }
 
-
 uint32 ObjectMgr::GetScriptId(std::string const& name)
 {
     // use binary search to find the script name in the sorted vector
@@ -10138,6 +10176,11 @@ CreatureTemplate const* ObjectMgr::GetCreatureTemplate(uint32 entry) const
 QuestPOIWrapper const* ObjectMgr::GetQuestPOIWrapper(uint32 questId) const
 {
     return Trinity::Containers::MapGetValuePtr(_questPOIStore, questId);
+}
+
+VehicleTemplate const* ObjectMgr::GetVehicleTemplate(Vehicle* veh) const
+{
+    return Trinity::Containers::MapGetValuePtr(_vehicleTemplateStore, veh->GetCreatureEntry());
 }
 
 VehicleAccessoryList const* ObjectMgr::GetVehicleAccessoryList(Vehicle* veh) const
