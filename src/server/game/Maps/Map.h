@@ -89,7 +89,7 @@ union u_map_magic
 struct map_fileheader
 {
     u_map_magic mapMagic;
-    u_map_magic versionMagic;
+    uint32 versionMagic;
     u_map_magic buildMagic;
     uint32 areaMapOffset;
     uint32 areaMapSize;
@@ -641,6 +641,11 @@ class TC_GAME_API Map : public GridRefManager<NGridType>
         void RemoveUpdateObject(Object* obj)
         {
             _updateObjects.erase(obj);
+        }
+
+        size_t GetActiveNonPlayersCount() const
+        {
+            return m_activeNonPlayers.size();
         }
 
         virtual std::string GetDebugInfo() const;
