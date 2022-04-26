@@ -68,8 +68,8 @@ void SmartAI::StartPath(bool run/* = false*/, uint32 pathId/* = 0*/, bool repeat
 
     if (invoker && invoker->GetTypeId() == TYPEID_PLAYER)
     {
-        _escortNPCFlags = me->GetUInt32Value(UNIT_NPC_FLAGS);
-        me->SetFlag(UNIT_NPC_FLAGS, 0);
+        _escortNPCFlags = me->GetNpcFlags();
+        me->ReplaceAllNpcFlags(UNIT_NPC_FLAG_NONE);
     }
 
     me->GetMotionMaster()->MovePath(_path, _repeatWaypointPath);
@@ -193,7 +193,7 @@ void SmartAI::EndPath(bool fail)
 
     if (_escortNPCFlags)
     {
-        me->SetFlag(UNIT_NPC_FLAGS, _escortNPCFlags);
+        me->ReplaceAllNpcFlags((NPCFlags)_escortNPCFlags);
         _escortNPCFlags = 0;
     }
 
@@ -350,11 +350,6 @@ bool SmartAI::IsEscortInvokerInRange()
 
     // no player invoker was stored, just ignore range check
     return true;
-}
-
-void SmartAI::WaypointStarted(uint32 nodeId, uint32 pathId)
-{
-    GetScript()->ProcessEventsFor(SMART_EVENT_WAYPOINT_START, nullptr, nodeId, pathId);
 }
 
 void SmartAI::WaypointReached(uint32 nodeId, uint32 pathId)
@@ -624,6 +619,21 @@ void SmartAI::SpellHitTarget(WorldObject* target, SpellInfo const* spellInfo)
     GetScript()->ProcessEventsFor(SMART_EVENT_SPELLHIT_TARGET, target->ToUnit(), 0, 0, false, spellInfo, target->ToGameObject());
 }
 
+void SmartAI::OnSpellCast(SpellInfo const* spellInfo)
+{
+    GetScript()->ProcessEventsFor(SMART_EVENT_ON_SPELL_CAST, nullptr, 0, 0, false, spellInfo);
+}
+
+void SmartAI::OnSpellFailed(SpellInfo const* spellInfo)
+{
+    GetScript()->ProcessEventsFor(SMART_EVENT_ON_SPELL_FAILED, nullptr, 0, 0, false, spellInfo);
+}
+
+void SmartAI::OnSpellStart(SpellInfo const* spellInfo)
+{
+    GetScript()->ProcessEventsFor(SMART_EVENT_ON_SPELL_START, nullptr, 0, 0, false, spellInfo);
+}
+
 void SmartAI::DamageTaken(Unit* doneBy, uint32& damage, DamageEffectType /*damageType*/, SpellInfo const* /*spellInfo = nullptr*/)
 {
     GetScript()->ProcessEventsFor(SMART_EVENT_DAMAGED, doneBy, damage);
@@ -742,16 +752,6 @@ void SmartAI::SetRun(bool run)
 void SmartAI::SetDisableGravity(bool fly)
 {
     me->SetDisableGravity(fly);
-}
-
-void SmartAI::SetCanFly(bool fly)
-{
-    me->SetCanFly(fly);
-}
-
-void SmartAI::SetSwim(bool swim)
-{
-    me->SetSwim(swim);
 }
 
 void SmartAI::SetEvadeDisabled(bool disable)

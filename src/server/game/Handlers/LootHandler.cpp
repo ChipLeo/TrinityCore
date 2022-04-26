@@ -227,11 +227,13 @@ void WorldSession::HandleLootOpcode(WorldPacket& recvData)
     if (!GetPlayer()->IsAlive() || !guid.IsCreatureOrVehicle())
         return;
 
-    GetPlayer()->SendLoot(guid, LOOT_CORPSE);
-
     // interrupt cast
     if (GetPlayer()->IsNonMeleeSpellCast(false))
         GetPlayer()->InterruptNonMeleeSpells(false);
+
+    GetPlayer()->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_FLAG_LOOTING);
+
+    GetPlayer()->SendLoot(guid, LOOT_CORPSE);
 }
 
 void WorldSession::HandleLootReleaseOpcode(WorldPacket& recvData)
@@ -256,7 +258,7 @@ void WorldSession::DoLootRelease(ObjectGuid lguid)
     player->SetLootGUID(ObjectGuid::Empty);
     player->SendLootRelease(lguid);
 
-    player->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_LOOTING);
+    player->RemoveUnitFlag(UNIT_FLAG_LOOTING);
 
     if (!player->IsInWorld())
         return;
@@ -356,7 +358,7 @@ void WorldSession::DoLootRelease(ObjectGuid lguid)
         loot = &creature->loot;
         if (loot->isLooted())
         {
-            creature->RemoveFlag(UNIT_DYNAMIC_FLAGS, UNIT_DYNFLAG_LOOTABLE);
+            creature->RemoveDynamicFlag(UNIT_DYNFLAG_LOOTABLE);
 
             // skip pickpocketing loot for speed, skinning timer reduction is no-op in fact
             if (!creature->IsAlive())

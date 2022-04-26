@@ -1261,6 +1261,7 @@ public:
         if (count > 0 && item)
         {
             player->SendNewItem(item, count, false, true);
+            handler->PSendSysMessage(LANG_ADDITEM, itemId, count, handler->GetNameLink(playerTarget).c_str());
             if (player != playerTarget)
                 playerTarget->SendNewItem(item, count, true, false);
         }
@@ -1394,7 +1395,6 @@ public:
         if (count > 0 && item)
         {
             player->SendNewItem(item, count, false, true);
-            handler->PSendSysMessage(LANG_ADDITEM, itemId, count, handler->GetNameLink(playerTarget).c_str());
             if (player != playerTarget)
                 playerTarget->SendNewItem(item, count, true, false);
         }
@@ -1782,7 +1782,7 @@ public:
         if (result2)
         {
             Field* fields  = result2->Fetch();
-            bool permanent = fields[1].GetBool();
+            bool permanent = fields[1].GetUInt64() != 0;
             banTime        = !permanent ? int64(fields[0].GetUInt32()) : 0;
             bannedBy       = fields[2].GetString();
             banReason      = fields[3].GetString();

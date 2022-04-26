@@ -229,8 +229,8 @@ void CombatManager::InheritCombatStatesFrom(Unit const* who)
         if (!IsInCombatWith(ref.first))
         {
             Unit* target = ref.second->GetOther(who);
-            if ((_owner->IsImmuneToPC() && target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)) ||
-                (_owner->IsImmuneToNPC() && !target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)))
+            if ((_owner->IsImmuneToPC() && target->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED)) ||
+                (_owner->IsImmuneToNPC() && !target->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED)))
                 continue;
             SetInCombatWith(target);
         }
@@ -238,8 +238,8 @@ void CombatManager::InheritCombatStatesFrom(Unit const* who)
     for (auto& ref : mgr._pvpRefs)
     {
         Unit* target = ref.second->GetOther(who);
-        if ((_owner->IsImmuneToPC() && target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)) ||
-            (_owner->IsImmuneToNPC() && !target->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PLAYER_CONTROLLED)))
+        if ((_owner->IsImmuneToPC() && target->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED)) ||
+            (_owner->IsImmuneToNPC() && !target->HasUnitFlag(UNIT_FLAG_PLAYER_CONTROLLED)))
             continue;
         SetInCombatWith(target);
     }
@@ -295,6 +295,35 @@ void CombatManager::EndAllPvECombat()
         _pveRefs.begin()->second->EndCombat();
 }
 
+void CombatManager::RevalidateCombat()
+{
+    auto it = _pveRefs.begin(), end = _pveRefs.end();
+    while (it != end)
+    {
+        CombatReference* const ref = it->second;
+        if (!CanBeginCombat(_owner, ref->GetOther(_owner)))
+        {
+            it = _pveRefs.erase(it), end = _pveRefs.end(); // erase manually here to avoid iterator invalidation
+            ref->EndCombat();
+        }
+        else
+            ++it;
+    }
+
+    auto it2 = _pvpRefs.begin(), end2 = _pvpRefs.end();
+    while (it2 != end2)
+    {
+        CombatReference* const ref = it2->second;
+        if (!CanBeginCombat(_owner, ref->GetOther(_owner)))
+        {
+            it2 = _pvpRefs.erase(it2), end2 = _pvpRefs.end(); // erase manually here to avoid iterator invalidation
+            ref->EndCombat();
+        }
+        else
+            ++it2;
+    }
+}
+
 void CombatManager::EndAllPvPCombat()
 {
     while (!_pvpRefs.empty())
@@ -339,14 +368,14 @@ bool CombatManager::UpdateOwnerCombatState() const
 
     if (combatState)
     {
-        _owner->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IN_COMBAT);
+        _owner->SetUnitFlag(UNIT_FLAG_IN_COMBAT);
         _owner->AtEnterCombat();
         if (_owner->GetTypeId() != TYPEID_UNIT)
             _owner->AtEngage(GetAnyTarget());
     }
     else
     {
-        _owner->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IN_COMBAT);
+        _owner->RemoveUnitFlag(UNIT_FLAG_IN_COMBAT);
         _owner->AtExitCombat();
         if (_owner->GetTypeId() != TYPEID_UNIT)
             _owner->AtDisengage();

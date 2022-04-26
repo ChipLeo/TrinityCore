@@ -19,6 +19,7 @@
 #include "InstanceScript.h"
 #include "ObjectAccessor.h"
 #include "ScriptedCreature.h"
+#include "SpellAuraEffects.h"
 #include "SpellAuras.h"
 #include "SpellScript.h"
 #include "sunwell_plateau.h"
@@ -232,7 +233,7 @@ struct boss_muru : public BossAI
     {
         _Reset();
         Initialize();
-        me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
+        me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
         me->SetVisible(true);
     }
 
@@ -279,7 +280,7 @@ struct boss_muru : public BossAI
             _phase = PHASE_TWO;
             me->RemoveAllAuras();
             DoCast(me, SPELL_OPEN_ALL_PORTALS, true);
-            me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
+            me->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
 
             scheduler.Schedule(Seconds(6), [this](TaskContext /*context*/)
             {
@@ -371,7 +372,7 @@ struct npc_dark_fiend : public ScriptedAI
         _scheduler.Schedule(Seconds(2), [this](TaskContext /*context*/)
         {
             me->SetReactState(REACT_AGGRESSIVE);
-            me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
+            me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
 
             if (Creature* _summoner = ObjectAccessor::GetCreature(*me, _summonerGUID))
                 if (Unit* target = _summoner->AI()->SelectTarget(SelectTargetMethod::Random, 0))
@@ -608,6 +609,31 @@ class spell_summon_blood_elves_periodic : public AuraScript
     }
 };
 
+// 46284 - Negative Energy Periodic
+class spell_muru_negative_energy_periodic : public AuraScript
+{
+    PrepareAuraScript(spell_muru_negative_energy_periodic);
+
+    bool Validate(SpellInfo const* spellInfo) override
+    {
+        return ValidateSpellInfo({ spellInfo->GetEffect(EFFECT_0).TriggerSpell });
+    }
+
+    void PeriodicTick(AuraEffect const* aurEff)
+    {
+        PreventDefaultAction();
+
+        CastSpellExtraArgs args(aurEff);
+        args.AddSpellMod(SPELLVALUE_MAX_TARGETS, aurEff->GetTickNumber() / 10 + 1);
+        GetTarget()->CastSpell(nullptr, aurEff->GetSpellEffectInfo().TriggerSpell, args);
+    }
+
+    void Register() override
+    {
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_muru_negative_energy_periodic::PeriodicTick, EFFECT_0, SPELL_AURA_PERIODIC_TRIGGER_SPELL);
+    }
+};
+
 void AddSC_boss_muru()
 {
     RegisterSunwellPlateauCreatureAI(boss_muru);
@@ -621,4 +647,5 @@ void AddSC_boss_muru()
     RegisterSpellScript(spell_dark_fiend_skin);
     RegisterSpellScript(spell_transform_visual_missile_periodic);
     RegisterSpellScript(spell_summon_blood_elves_periodic);
+    RegisterSpellScript(spell_muru_negative_energy_periodic);
 }

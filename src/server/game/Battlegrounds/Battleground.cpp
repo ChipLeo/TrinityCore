@@ -991,10 +991,12 @@ void Battleground::AddPlayer(Player* player)
     bp.OfflineRemoveTime = 0;
     bp.Team = team;
 
+    bool const isInBattleground = IsPlayerInBattleground(player->GetGUID());
     // Add to list/maps
     m_Players[player->GetGUID()] = bp;
 
-    UpdatePlayersCountByTeam(team, false);                  // +1 player
+    if (!isInBattleground)
+        UpdatePlayersCountByTeam(team, false);                  // +1 player
 
     WorldPacket data;
     sBattlegroundMgr->BuildPlayerJoinedBattlegroundPacket(&data, player);
@@ -1022,7 +1024,8 @@ void Battleground::AddPlayer(Player* player)
     }
 
     // reset all map criterias on map enter
-    player->ResetAchievementCriteria(ACHIEVEMENT_CRITERIA_CONDITION_BG_MAP, GetMapId(), true);
+    if (!isInBattleground)
+        player->ResetAchievementCriteria(ACHIEVEMENT_CRITERIA_CONDITION_BG_MAP, GetMapId(), true);
 
     // setup BG group membership
     PlayerAddedToBGCheckIfBGIsRunning(player);
@@ -1565,9 +1568,9 @@ bool Battleground::AddSpiritGuide(uint32 type, float x, float y, float z, float 
         /// @todo Fix display here
         // creature->SetVisibleAura(0, SPELL_SPIRIT_HEAL_CHANNEL);
         // casting visual effect
-        creature->SetUInt32Value(UNIT_CHANNEL_SPELL, SPELL_SPIRIT_HEAL_CHANNEL);
+        creature->SetChannelSpellId(SPELL_SPIRIT_HEAL_CHANNEL);
         // correct cast speed
-        creature->SetFloatValue(UNIT_MOD_CAST_SPEED, 1.0f);
+        creature->SetModCastingSpeed(1.0f);
         //creature->CastSpell(creature, SPELL_SPIRIT_HEAL_CHANNEL, true);
         return true;
     }
@@ -1689,7 +1692,7 @@ void Battleground::HandleKillPlayer(Player* victim, Player* killer)
     if (!isArena())
     {
         // To be able to remove insignia -- ONLY IN Battlegrounds
-        victim->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_SKINNABLE);
+        victim->SetUnitFlag(UNIT_FLAG_SKINNABLE);
         RewardXPAtKill(killer, victim);
     }
 }

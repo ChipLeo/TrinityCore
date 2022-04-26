@@ -66,12 +66,12 @@ _flags(AFLAG_NONE), _effectsToApply(effMask), _needClientUpdate(false)
         }
         else
         {
-            Unit::VisibleAuraMap const* visibleAuras = GetTarget()->GetVisibleAuras();
+            Unit::VisibleAuraMap const& visibleAuras = GetTarget()->GetVisibleAuras();
             // lookup for free slots in units visibleAuras
-            Unit::VisibleAuraMap::const_iterator itr = visibleAuras->find(0);
+            Unit::VisibleAuraMap::const_iterator itr = visibleAuras.find(0);
             for (uint32 freeSlot = 0; freeSlot < MAX_AURAS; ++itr, ++freeSlot)
             {
-                if (itr == visibleAuras->end() || itr->first != freeSlot)
+                if (itr == visibleAuras.end() || itr->first != freeSlot)
                 {
                     slot = freeSlot;
                     break;
@@ -1113,47 +1113,8 @@ bool Aura::CanBeSaved() const
             return false;
     }
 
-    // don't save liquid auras
-    if (GetSpellInfo()->HasAttribute(SPELL_ATTR0_CU_LIQUID_AURA))
+    if (GetSpellInfo()->HasAttribute(SPELL_ATTR0_CU_AURA_CANNOT_BE_SAVED))
         return false;
-
-    // Can't be saved - aura handler relies on calculated amount and changes it
-    if (HasEffectType(SPELL_AURA_CONVERT_RUNE))
-        return false;
-
-    // No point in saving this, since the stable dialog can't be open on aura load anyway.
-    if (HasEffectType(SPELL_AURA_OPEN_STABLE))
-        return false;
-
-    // Can't save vehicle auras, it requires both caster & target to be in world
-    if (HasEffectType(SPELL_AURA_CONTROL_VEHICLE))
-        return false;
-
-    // do not save bind sight auras
-    if (HasEffectType(SPELL_AURA_BIND_SIGHT))
-        return false;
-
-    // no charming auras (taking direct control)
-    if (HasEffectType(SPELL_AURA_MOD_POSSESS) || HasEffectType(SPELL_AURA_MOD_POSSESS_PET))
-        return false;
-
-    // no charming auras can be saved
-    if (HasEffectType(SPELL_AURA_MOD_CHARM) || HasEffectType(SPELL_AURA_AOE_CHARM))
-        return false;
-
-    // Incanter's Absorbtion - considering the minimal duration and problems with aura stacking
-    // we skip saving this aura
-    // Also for some reason other auras put as MultiSlot crash core on keeping them after restart,
-    // so put here only these for which you are sure they get removed
-    switch (GetId())
-    {
-        case 44413: // Incanter's Absorption
-        case 40075: // Fel Flak Fire
-        case 55849: // Power Spark
-        case 73822: // Hellscream's Warsong
-        case 73828: // Strength of Wrynn
-            return false;
-    }
 
     // don't save auras removed by proc system
     if (IsUsingCharges() && !GetCharges())
@@ -1563,7 +1524,6 @@ void Aura::HandleAuraSpecificMods(AuraApplication const* aurApp, Unit* caster, b
                         if (removeMode != AURA_REMOVE_BY_EXPIRE)
                             break;
                         target->CastSpell(target, 32612, GetEffect(1));
-                        target->CombatStop();
                         break;
                     default:
                         break;
@@ -2665,6 +2625,7 @@ void UnitAura::FillTargetMap(std::unordered_map<Unit*, uint8>& targets, Unit* ca
         ConditionContainer* condList = spellEffectInfo.ImplicitTargetConditions;
 
         float radius = spellEffectInfo.CalcRadius(ref);
+        float extraSearchRadius = 0.0f;
 
         SpellTargetCheckTypes selectionType = TARGET_CHECK_DEFAULT;
         switch (spellEffectInfo.Effect)
@@ -2680,6 +2641,7 @@ void UnitAura::FillTargetMap(std::unordered_map<Unit*, uint8>& targets, Unit* ca
                 break;
             case SPELL_EFFECT_APPLY_AREA_AURA_ENEMY:
                 selectionType = TARGET_CHECK_ENEMY;
+                extraSearchRadius = radius > 0.0f ? EXTRA_CELL_SEARCH_RADIUS : 0.0f;
                 break;
             case SPELL_EFFECT_APPLY_AREA_AURA_PET:
                 if (!condList || sConditionMgr->IsObjectMeetToConditions(GetUnitOwner(), ref, *condList))
@@ -2701,7 +2663,7 @@ void UnitAura::FillTargetMap(std::unordered_map<Unit*, uint8>& targets, Unit* ca
         {
             Trinity::WorldObjectSpellAreaTargetCheck check(radius, GetUnitOwner(), ref, GetUnitOwner(), m_spellInfo, selectionType, condList);
             Trinity::UnitListSearcher<Trinity::WorldObjectSpellAreaTargetCheck> searcher(GetUnitOwner(), units, check);
-            Cell::VisitAllObjects(GetUnitOwner(), searcher, radius);
+            Cell::VisitAllObjects(GetUnitOwner(), searcher, radius + extraSearchRadius);
         }
 
         for (Unit* unit : units)

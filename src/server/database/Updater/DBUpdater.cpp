@@ -332,7 +332,7 @@ void DBUpdater<T>::ApplyFile(DatabaseWorkerPool<T>& pool, std::string const& hos
     Path const& path)
 {
     std::vector<std::string> args;
-    args.reserve(7);
+    args.reserve(9);
 
     // CLI Client connection info
     args.emplace_back("-h" + host);
@@ -370,8 +370,21 @@ void DBUpdater<T>::ApplyFile(DatabaseWorkerPool<T>& pool, std::string const& hos
     // Set max allowed packet to 1 GB
     args.emplace_back("--max-allowed-packet=1GB");
 
+#if !defined(MARIADB_VERSION_ID) && MYSQL_VERSION_ID >= 80000
+
+    if (ssl == "ssl")
+        args.emplace_back("--ssl-mode=REQUIRED");
+
+#else
+
     if (ssl == "ssl")
         args.emplace_back("--ssl");
+
+#endif
+
+    // Execute sql file
+    args.emplace_back("-e");
+    args.emplace_back(Trinity::StringFormat("BEGIN; SOURCE %s; COMMIT;", path.generic_string().c_str()));
 
     // Database
     if (!database.empty())
@@ -379,7 +392,7 @@ void DBUpdater<T>::ApplyFile(DatabaseWorkerPool<T>& pool, std::string const& hos
 
     // Invokes a mysql process which doesn't leak credentials to logs
     int const ret = Trinity::StartProcess(DBUpdaterUtil::GetCorrectedMySQLExecutable(), args,
-                                 "sql.updates", path.generic_string(), true);
+                                 "sql.updates", "", true);
 
     if (ret != EXIT_SUCCESS)
     {

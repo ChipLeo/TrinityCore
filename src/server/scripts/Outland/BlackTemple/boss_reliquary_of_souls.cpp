@@ -190,7 +190,7 @@ struct boss_reliquary_of_souls : public BossAI
                 break;
             case ACTION_START_COMBAT:
                 _inCombat = true;
-                me->SetByteValue(UNIT_FIELD_BYTES_1, UNIT_BYTES_1_OFFSET_STAND_STATE, UNIT_STAND_STATE_STAND);
+                me->SetStandState(UNIT_STAND_STATE_STAND);
                 events.ScheduleEvent(EVENT_SUBMERGE, 10s);
                 break;
             default:
@@ -745,6 +745,24 @@ class spell_reliquary_of_souls_aura_of_desire : public AuraScript
     }
 };
 
+// 41337 - Aura of Anger
+class spell_reliquary_of_souls_aura_of_anger : public AuraScript
+{
+    PrepareAuraScript(spell_reliquary_of_souls_aura_of_anger);
+
+    void HandleEffectPeriodicUpdate(AuraEffect* aurEff)
+    {
+        if (AuraEffect* aurEff1 = aurEff->GetBase()->GetEffect(EFFECT_1))
+            aurEff1->ChangeAmount(aurEff1->GetAmount() + 5);
+        aurEff->SetAmount(100 * aurEff->GetTickNumber());
+    }
+
+    void Register() override
+    {
+        OnEffectUpdatePeriodic += AuraEffectUpdatePeriodicFn(spell_reliquary_of_souls_aura_of_anger::HandleEffectPeriodicUpdate, EFFECT_0, SPELL_AURA_PERIODIC_DAMAGE);
+    }
+};
+
 // 28819 - Submerge Visual
 class spell_reliquary_of_souls_submerge : public AuraScript
 {
@@ -752,12 +770,12 @@ class spell_reliquary_of_souls_submerge : public AuraScript
 
     void OnApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
-        GetTarget()->SetByteValue(UNIT_FIELD_BYTES_1, UNIT_BYTES_1_OFFSET_STAND_STATE, UNIT_STAND_STATE_SUBMERGED);
+        GetTarget()->SetStandState(UNIT_STAND_STATE_SUBMERGED);
     }
 
     void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
-        GetTarget()->SetByteValue(UNIT_FIELD_BYTES_1, UNIT_BYTES_1_OFFSET_STAND_STATE, UNIT_STAND_STATE_STAND);
+        GetTarget()->SetStandState(UNIT_STAND_STATE_STAND);
     }
 
     void Register() override
@@ -815,6 +833,7 @@ void AddSC_boss_reliquary_of_souls()
     RegisterBlackTempleCreatureAI(npc_enslaved_soul);
     RegisterBlackTempleCreatureAI(npc_reliquary_combat_trigger);
     RegisterSpellScript(spell_reliquary_of_souls_aura_of_desire);
+    RegisterSpellScript(spell_reliquary_of_souls_aura_of_anger);
     RegisterSpellScript(spell_reliquary_of_souls_submerge);
     RegisterSpellScript(spell_reliquary_of_souls_spite);
     RegisterSpellScript(spell_reliquary_of_souls_frenzy);

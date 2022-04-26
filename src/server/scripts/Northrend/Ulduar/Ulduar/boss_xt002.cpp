@@ -60,7 +60,7 @@ enum Spells
     SPELL_HEART_LIGHTNING_TETHER            = 64799,
 
     // Void Zone
-    SPELL_CONSUMPTION                       = 64208,
+    SPELL_CONSUMPTION                       = 64209,
 
     // Life Spark
     SPELL_ARCANE_POWER_STATE                = 49411,
@@ -211,7 +211,7 @@ struct boss_xt002 : public BossAI
     {
         Talk(SAY_DEATH);
         _JustDied();
-        me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
+        me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
     }
 
     void ExposeHeart()
@@ -242,7 +242,7 @@ struct boss_xt002 : public BossAI
 
         DoCastSelf(SPELL_STAND);
         DoCastSelf(SPELL_COOLDOWN_CREATURE_SPECIAL_2);
-        me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
+        me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
         if (Creature* heart = instance->GetCreature(DATA_XT002_HEART))
         {
             if (heart->IsAlive())
@@ -351,7 +351,7 @@ struct boss_xt002 : public BossAI
                     break;
                 case EVENT_SUBMERGE:
                     DoCastSelf(SPELL_SUBMERGE);
-                    me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
+                    me->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
                     Talk(EMOTE_HEART_OPENED);
                     if (Creature* heart = instance->GetCreature(DATA_XT002_HEART))
                         heart->AI()->DoAction(ACTION_START_PHASE_HEART);
@@ -414,14 +414,14 @@ struct npc_xt002_heart : public NullCreatureAI
             DoCastSelf(SPELL_FULL_HEAL);
             DoCast(xt002, SPELL_RIDE_VEHICLE_EXPOSED, true);
             DoCastSelf(SPELL_HEART_OVERLOAD);
-            me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
-            me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT);
+            me->RemoveUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
+            me->SetUnitFlag(UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT);
         }
         else if (action == ACTION_DISPOSE_HEART)
         {
             DoCast(xt002, SPELL_HEART_RIDE_VEHICLE, true);
-            me->SetFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_UNINTERACTIBLE);
-            me->RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT);
+            me->SetUnitFlag(UNIT_FLAG_UNINTERACTIBLE);
+            me->RemoveUnitFlag(UNIT_FLAG_PREVENT_EMOTES_FROM_CHAT_TEXT);
         }
     }
 
@@ -658,19 +658,11 @@ struct npc_xt_void_zone : public PassiveAI
 {
     npc_xt_void_zone(Creature* creature) : PassiveAI(creature) { }
 
-    void Reset() override
+    void JustAppeared() override
     {
-        int32 bp = 0;
-        if (SpellInfo const* createdBySpell = sSpellMgr->GetSpellInfo(me->GetUInt32Value(UNIT_CREATED_BY_SPELL)))
-            bp = createdBySpell->GetEffect(EFFECT_1).CalcValue();
-
-        _scheduler.Schedule(1s, [this, bp](TaskContext consumption)
+        _scheduler.Schedule(2500ms, [this](TaskContext /*task*/)
         {
-            CastSpellExtraArgs args(false);
-            if (bp)
-                args.AddSpellBP0(bp);
-            DoCastSelf(SPELL_CONSUMPTION, args);
-            consumption.Repeat();
+            DoCastSelf(SPELL_CONSUMPTION);
         });
     }
 

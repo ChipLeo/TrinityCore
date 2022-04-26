@@ -195,12 +195,13 @@ enum Spells
 
 enum MiscData
 {
-    ITEM_GOBLIN_ROCKET_PACK = 49278,
+    ITEM_GOBLIN_ROCKET_PACK    = 49278,
+    SPELL_CREATE_ROCKET_PACK   = 70055,
 
-    PHASE_COMBAT            = 0,
-    PHASE_INTRO             = 1,
+    PHASE_COMBAT               = 0,
+    PHASE_INTRO                = 1,
 
-    MUSIC_ENCOUNTER         = 17289
+    MUSIC_ENCOUNTER            = 17289
 };
 
 enum EncounterActions
@@ -473,10 +474,12 @@ public:
         if (!_owner->IsAlive())
             return true;
 
-        Movement::MoveSplineInit init(_owner);
-        init.DisableTransportPathTransformations();
-        init.MoveTo(_dest.GetPositionX(), _dest.GetPositionY(), _dest.GetPositionZ(), false);
-        _owner->GetMotionMaster()->LaunchMoveSpline(std::move(init), EVENT_CHARGE_PREPATH, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
+        std::function<void(Movement::MoveSplineInit&)> initializer = [dest = _dest](Movement::MoveSplineInit& init)
+        {
+            init.DisableTransportPathTransformations();
+            init.MoveTo(dest.GetPositionX(), dest.GetPositionY(), dest.GetPositionZ(), false);
+        };
+        _owner->GetMotionMaster()->LaunchMoveSpline(std::move(initializer), EVENT_CHARGE_PREPATH, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
 
         return true;
     }
@@ -567,10 +570,12 @@ struct gunship_npc_AI : public ScriptedAI
             me->GetTransport()->CalculatePassengerPosition(hx, hy, hz, &ho);
             me->SetHomePosition(hx, hy, hz, ho);
 
-            Movement::MoveSplineInit init(me);
-            init.DisableTransportPathTransformations();
-            init.MoveTo(x, y, z, false);
-            me->GetMotionMaster()->LaunchMoveSpline(std::move(init), EVENT_CHARGE_PREPATH, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
+            std::function<void(Movement::MoveSplineInit&)> initializer = [=](Movement::MoveSplineInit& init)
+            {
+                init.DisableTransportPathTransformations();
+                init.MoveTo(x, y, z, false);
+            };
+            me->GetMotionMaster()->LaunchMoveSpline(std::move(initializer), EVENT_CHARGE_PREPATH, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
         }
     }
 
@@ -933,11 +938,13 @@ struct npc_high_overlord_saurfang_igb : public ScriptedAI
         }
         else if (action == ACTION_EXIT_SHIP)
         {
-            Movement::PointsArray path(SaurfangExitPath, SaurfangExitPath + SaurfangExitPathSize);
-            Movement::MoveSplineInit init(me);
-            init.DisableTransportPathTransformations();
-            init.MovebyPath(path, 0);
-            me->GetMotionMaster()->LaunchMoveSpline(std::move(init), 0, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
+            std::function<void(Movement::MoveSplineInit&)> initializer = [](Movement::MoveSplineInit& init)
+            {
+                Movement::PointsArray path(SaurfangExitPath, SaurfangExitPath + SaurfangExitPathSize);
+                init.DisableTransportPathTransformations();
+                init.MovebyPath(path, 0);
+            };
+            me->GetMotionMaster()->LaunchMoveSpline(std::move(initializer), 0, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
 
             me->DespawnOrUnsummon(18s);
         }
@@ -955,7 +962,7 @@ struct npc_high_overlord_saurfang_igb : public ScriptedAI
 
     bool OnGossipSelect(Player* /*player*/, uint32 /*menuId*/, uint32 /*gossipListId*/) override
     {
-        me->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+        me->RemoveNpcFlag(UNIT_NPC_FLAG_GOSSIP);
         me->GetTransport()->EnableMovement(true);
         _events.SetPhase(PHASE_INTRO);
         _events.ScheduleEvent(EVENT_INTRO_H_1, 5s, 0, PHASE_INTRO);
@@ -1186,11 +1193,13 @@ struct npc_muradin_bronzebeard_igb : public ScriptedAI
         }
         else if (action == ACTION_EXIT_SHIP)
         {
-            Movement::PointsArray path(MuradinExitPath, MuradinExitPath + MuradinExitPathSize);
-            Movement::MoveSplineInit init(me);
-            init.DisableTransportPathTransformations();
-            init.MovebyPath(path, 0);
-            me->GetMotionMaster()->LaunchMoveSpline(std::move(init), 0, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
+            std::function<void(Movement::MoveSplineInit&)> initializer = [](Movement::MoveSplineInit& init)
+            {
+                Movement::PointsArray path(MuradinExitPath, MuradinExitPath + MuradinExitPathSize);
+                init.DisableTransportPathTransformations();
+                init.MovebyPath(path, 0);
+            };
+            me->GetMotionMaster()->LaunchMoveSpline(std::move(initializer), 0, MOTION_PRIORITY_NORMAL, POINT_MOTION_TYPE);
 
             me->DespawnOrUnsummon(18s);
         }
@@ -1208,7 +1217,7 @@ struct npc_muradin_bronzebeard_igb : public ScriptedAI
 
     bool OnGossipSelect(Player* /*player*/, uint32 /*menuId*/, uint32 /*gossipListId*/) override
     {
-        me->RemoveFlag(UNIT_NPC_FLAGS, UNIT_NPC_FLAG_GOSSIP);
+        me->RemoveNpcFlag(UNIT_NPC_FLAG_GOSSIP);
         me->GetTransport()->EnableMovement(true);
         _events.SetPhase(PHASE_INTRO);
         _events.ScheduleEvent(EVENT_INTRO_A_1, 5s);
@@ -1361,7 +1370,7 @@ struct npc_zafod_boombox : public gunship_npc_AI
 
     bool OnGossipSelect(Player* player, uint32 /*menuId*/, uint32 /*gossipListId*/) override
     {
-        player->AddItem(ITEM_GOBLIN_ROCKET_PACK, 1);
+        me->CastSpell(player, SPELL_CREATE_ROCKET_PACK);
         player->PlayerTalkClass->SendCloseGossip();
         return false;
     }
