@@ -25,6 +25,7 @@
 #include "GameObject.h"
 #include "GameObjectAI.h"
 #include "Item.h"
+#include "MovementPackets.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
@@ -41,8 +42,8 @@
 
 //npcbot
 #include "bot_ai.h"
+#include "botconfig.h"
 #include "botdatamgr.h"
-#include "botmgr.h"
 //end npcbot
 
 void WorldSession::HandleClientCastFlags(WorldPacket& recvPacket, uint8 castFlags, SpellCastTargets& targets)
@@ -62,8 +63,11 @@ void WorldSession::HandleClientCastFlags(WorldPacket& recvPacket, uint8 castFlag
         recvPacket >> hasMovementData;
         if (hasMovementData)
         {
-            recvPacket.SetOpcode(recvPacket.read<uint32>());
-            HandleMovementOpcodes(recvPacket);
+            OpcodeClient opcode = static_cast<OpcodeClient>(recvPacket.read<uint32>());
+            MovementInfo movementInfo;
+            recvPacket >> movementInfo.guid.ReadAsPacked();
+            recvPacket >> movementInfo;
+            HandleMovementOpcode(opcode, movementInfo);
         }
     }
 }
@@ -139,9 +143,9 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
 
     if (pUser->IsInCombat())
     {
-        for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
+        for (ItemEffect const& effectData : proto->Effects)
         {
-            if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(proto->Spells[i].SpellId))
+            if (SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(effectData.SpellID))
             {
                 if (!spellInfo->CanBeUsedInCombat())
                 {
@@ -170,7 +174,7 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
     if (!sScriptMgr->OnItemUse(pUser, pItem, targets))
     {
         // no script or script not process request by self
-        pUser->CastItemUseSpell(pItem, targets, castCount, glyphIndex);
+        pUser->CastItemUseSpell(pItem, spellId, targets, castCount, glyphIndex);
     }
 }
 
@@ -686,8 +690,8 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPacket& recvData)
                 uint8 slot = botItemSlots[i];
                 //Items not displayed on bot: tabard, head, back
                 if (slot == 0 ||
-                    (slot == BOT_SLOT_HEAD && BotMgr::ShowEquippedHelm() == false) ||
-                    (slot == BOT_SLOT_BACK && BotMgr::ShowEquippedCloak() == false))
+                    (slot == BOT_SLOT_HEAD && BotCfg::ShowEquippedHelm() == false) ||
+                    (slot == BOT_SLOT_BACK && BotCfg::ShowEquippedCloak() == false))
                 {
                     data << uint32(0);
                     continue;

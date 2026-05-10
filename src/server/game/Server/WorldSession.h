@@ -51,7 +51,6 @@ class Unit;
 class Warden;
 class WorldPacket;
 class WorldSocket;
-struct AddonInfo;
 struct AreaTableEntry;
 struct AuctionEntry;
 struct DeclinedName;
@@ -127,6 +126,16 @@ namespace WorldPackets
 
     namespace Character
     {
+        struct CharacterCreateInfo;
+        struct CharacterRenameInfo;
+        struct CharCustomizeInfo;
+        struct CharRaceOrFactionChangeInfo;
+
+        class CreateCharacter;
+        class CharDelete;
+        class CharacterRenameRequest;
+        class CharCustomize;
+        class CharRaceOrFactionChange;
         class LogoutCancel;
         class LogoutRequest;
         class ShowingCloak;
@@ -184,6 +193,11 @@ namespace WorldPackets
         class SaveGuildEmblem;
     }
 
+    namespace Inspect
+    {
+        class Inspect;
+    }
+
     namespace LFG
     {
         class LFGJoin;
@@ -217,6 +231,11 @@ namespace WorldPackets
         class ResurrectResponse;
     }
 
+    namespace Movement
+    {
+        class ClientPlayerMovement;
+    }
+
     namespace NPC
     {
         class Hello;
@@ -240,6 +259,7 @@ namespace WorldPackets
     namespace Query
     {
         class QueryCreature;
+        class QueryPlayerName;
         class QueryGameObject;
         class QueryCorpseLocationFromClient;
         class QueryCorpseTransport;
@@ -263,7 +283,7 @@ namespace WorldPackets
         class CancelChannelling;
     }
 
-    namespace Talents
+    namespace Talent
     {
         class ConfirmRespecWipe;
     }
@@ -271,6 +291,11 @@ namespace WorldPackets
     namespace Totem
     {
         class TotemDestroyed;
+    }
+
+    namespace Trade
+    {
+        class CancelTrade;
     }
 }
 
@@ -388,67 +413,24 @@ public:
     virtual bool Process(WorldPacket* packet) override;
 };
 
-// Proxy structure to contain data passed to callback function,
-// only to prevent bloating the parameter list
-class CharacterCreateInfo
-{
-    friend class WorldSession;
-    friend class Player;
-
-    protected:
-        /// User specified variables
-        std::string Name;
-        uint8 Race       = 0;
-        uint8 Class      = 0;
-        uint8 Gender     = GENDER_NONE;
-        uint8 Skin       = 0;
-        uint8 Face       = 0;
-        uint8 HairStyle  = 0;
-        uint8 HairColor  = 0;
-        uint8 FacialHair = 0;
-        uint8 OutfitId   = 0;
-
-        /// Server side data
-        uint8 CharCount = 0;
-};
-
-struct CharacterRenameInfo
-{
-    friend class WorldSession;
-
-    protected:
-        ObjectGuid Guid;
-        std::string Name;
-};
-
-struct CharacterCustomizeInfo : public CharacterRenameInfo
-{
-    friend class Player;
-    friend class WorldSession;
-
-    protected:
-        uint8 Gender     = GENDER_NONE;
-        uint8 Skin       = 0;
-        uint8 Face       = 0;
-        uint8 HairStyle  = 0;
-        uint8 HairColor  = 0;
-        uint8 FacialHair = 0;
-};
-
-struct CharacterFactionChangeInfo : public CharacterCustomizeInfo
-{
-    friend class Player;
-    friend class WorldSession;
-
-    protected:
-        uint8 Race = 0;
-        bool FactionChange = false;
-};
-
 struct PacketCounter
 {
     time_t lastReceiveTime;
     uint32 amountCounter;
+};
+
+struct SecureAddonInfo
+{
+    enum SecureAddonStatus : uint8
+    {
+        BANNED          = 0,
+        SECURE_VISIBLE  = 1,
+        SECURE_HIDDEN   = 2
+    };
+
+    std::string Name;
+    SecureAddonStatus Status = BANNED;
+    bool HasKey = false;
 };
 
 /// Player session in the World
@@ -676,26 +658,26 @@ class TC_GAME_API WorldSession
         void Handle_Deprecated(WorldPacket& recvPacket);    // never used anymore by client
 
         void HandleCharEnumOpcode(WorldPacket& recvPacket);
-        void HandleCharDeleteOpcode(WorldPacket& recvPacket);
-        void HandleCharCreateOpcode(WorldPacket& recvPacket);
+        void HandleCharDeleteOpcode(WorldPackets::Character::CharDelete& charDelete);
+        void HandleCharCreateOpcode(WorldPackets::Character::CreateCharacter& charCreate);
         void HandlePlayerLoginOpcode(WorldPacket& recvPacket);
         void HandleCharEnum(PreparedQueryResult result);
         void HandlePlayerLogin(LoginQueryHolder const& holder);
-        void HandleCharFactionOrRaceChange(WorldPacket& recvData);
-        void HandleCharFactionOrRaceChangeCallback(std::shared_ptr<CharacterFactionChangeInfo> factionChangeInfo, PreparedQueryResult result);
-        void HandleCharRenameOpcode(WorldPacket& recvData);
-        void HandleCharRenameCallBack(std::shared_ptr<CharacterRenameInfo> renameInfo, PreparedQueryResult result);
+        void HandleCharRaceOrFactionChange(WorldPackets::Character::CharRaceOrFactionChange& packet);
+        void HandleCharRaceOrFactionChangeCallback(std::shared_ptr<WorldPackets::Character::CharRaceOrFactionChangeInfo> factionChangeInfo, PreparedQueryResult result);
+        void HandleCharRenameOpcode(WorldPackets::Character::CharacterRenameRequest& request);
+        void HandleCharRenameCallBack(std::shared_ptr<WorldPackets::Character::CharacterRenameInfo> renameInfo, PreparedQueryResult result);
         void HandleSetPlayerDeclinedNames(WorldPacket& recvData);
         void HandleAlterAppearance(WorldPacket& recvData);
-        void HandleCharCustomize(WorldPacket& recvData);
-        void HandleCharCustomizeCallback(std::shared_ptr<CharacterCustomizeInfo> customizeInfo, PreparedQueryResult result);
+        void HandleCharCustomize(WorldPackets::Character::CharCustomize& packet);
+        void HandleCharCustomizeCallback(std::shared_ptr<WorldPackets::Character::CharCustomizeInfo> customizeInfo, PreparedQueryResult result);
         void HandleOpeningCinematic(WorldPackets::Misc::OpeningCinematic& packet);
 
         void SendCharCreate(ResponseCodes result);
         void SendCharDelete(ResponseCodes result);
-        void SendCharRename(ResponseCodes result, CharacterRenameInfo const* renameInfo);
-        void SendCharCustomize(ResponseCodes result, CharacterCustomizeInfo const* customizeInfo);
-        void SendCharFactionChange(ResponseCodes result, CharacterFactionChangeInfo const* factionChangeInfo);
+        void SendCharRename(ResponseCodes result, WorldPackets::Character::CharacterRenameInfo const* renameInfo);
+        void SendCharCustomize(ResponseCodes result, WorldPackets::Character::CharCustomizeInfo const* customizeInfo);
+        void SendCharFactionChange(ResponseCodes result, WorldPackets::Character::CharRaceOrFactionChangeInfo const* factionChangeInfo);
         void SendSetPlayerDeclinedNamesResult(DeclinedNameResult result, ObjectGuid guid);
         void SendBarberShopResult(BarberShopResult result);
 
@@ -703,7 +685,7 @@ class TC_GAME_API WorldSession
         void HandlePlayedTime(WorldPackets::Character::PlayedTimeClient& packet);
 
         // new inspect
-        void HandleInspectOpcode(WorldPacket& recvPacket);
+        void HandleInspectOpcode(WorldPackets::Inspect::Inspect& inspect);
 
         // new party stats
         void HandleInspectHonorStatsOpcode(WorldPacket& recvPacket);
@@ -784,7 +766,7 @@ class TC_GAME_API WorldSession
         void HandleGameObjectUseOpcode(WorldPacket& recPacket);
         void HandleGameobjectReportUse(WorldPacket& recvPacket);
 
-        void HandleNameQueryOpcode(WorldPacket& recvPacket);
+        void HandleNameQueryOpcode(WorldPackets::Query::QueryPlayerName& queryPlayerName);
 
         void HandleQueryTimeOpcode(WorldPacket& recvPacket);
 
@@ -795,7 +777,11 @@ class TC_GAME_API WorldSession
         void HandleMoveWorldportAckOpcode(WorldPacket& recvPacket);
         void HandleMoveWorldportAck();                // for server-side calls
 
-        void HandleMovementOpcodes(WorldPacket& recvPacket);
+        // Validates that correct unit is moved, coords are in valid range and movement flags
+        bool ValidateMovementInfo(MovementInfo* mi) const;
+
+        void HandleMovementOpcodes(WorldPackets::Movement::ClientPlayerMovement& packet);
+        void HandleMovementOpcode(OpcodeClient opcode, MovementInfo& movementInfo);
         void HandleSetActiveMoverOpcode(WorldPacket& recvData);
         void HandleMoveNotActiveMover(WorldPacket& recvData);
         void HandleDismissControlledVehicle(WorldPacket& recvData);
@@ -886,7 +872,7 @@ class TC_GAME_API WorldSession
         void HandleAcceptTradeOpcode(WorldPacket& recvPacket);
         void HandleBeginTradeOpcode(WorldPacket& recvPacket);
         void HandleBusyTradeOpcode(WorldPacket& recvPacket);
-        void HandleCancelTradeOpcode(WorldPacket& recvPacket);
+        void HandleCancelTradeOpcode(WorldPackets::Trade::CancelTrade& cancelTrade);
         void HandleClearTradeItemOpcode(WorldPacket& recvPacket);
         void HandleIgnoreTradeOpcode(WorldPacket& recvPacket);
         void HandleInitiateTradeOpcode(WorldPacket& recvPacket);
@@ -953,7 +939,7 @@ class TC_GAME_API WorldSession
 
         void HandleLearnTalentOpcode(WorldPacket& recvPacket);
         void HandleLearnPreviewTalents(WorldPacket& recvPacket);
-        void HandleTalentWipeConfirmOpcode(WorldPackets::Talents::ConfirmRespecWipe& confirmRespecWipe);
+        void HandleTalentWipeConfirmOpcode(WorldPackets::Talent::ConfirmRespecWipe& confirmRespecWipe);
         void HandleUnlearnSkillOpcode(WorldPacket& recvPacket);
 
         void HandleQuestgiverStatusQueryOpcode(WorldPacket& recvPacket);
@@ -1251,7 +1237,7 @@ class TC_GAME_API WorldSession
         }
 
         // Movement helpers
-        bool IsRightUnitBeingMoved(ObjectGuid guid);
+        bool IsRightUnitBeingMoved(ObjectGuid guid) const;
 
         // this stores the GUIDs of the characters who can login
         // characters who failed on Player::BuildEnumData shouldn't login
@@ -1289,20 +1275,6 @@ class TC_GAME_API WorldSession
 
         struct Addons
         {
-            struct SecureAddonInfo
-            {
-                enum SecureAddonStatus : uint8
-                {
-                    BANNED          = 0,
-                    SECURE_VISIBLE  = 1,
-                    SECURE_HIDDEN   = 2
-                };
-
-                std::string Name;
-                SecureAddonStatus Status = BANNED;
-                bool HasKey = false;
-            };
-
             static uint32 constexpr MaxSecureAddons = 25;
 
             std::vector<SecureAddonInfo> SecureAddons;

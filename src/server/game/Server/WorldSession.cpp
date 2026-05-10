@@ -24,6 +24,7 @@
 #include "AddonMgr.h"
 #include "BattlegroundMgr.h"
 #include "CharacterPackets.h"
+#include "ClientConfigPackets.h"
 #include "Config.h"
 #include "Common.h"
 #include "Containers.h"
@@ -38,6 +39,7 @@
 #include "Log.h"
 #include "Map.h"
 #include "Metric.h"
+#include "MovementPackets.h"
 #include "MoveSpline.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
@@ -59,7 +61,7 @@
 #include <zlib.h>
 
 //npcbot
-#include "botmgr.h"
+#include "botconfig.h"
 //end npcbot
 
 namespace {
@@ -950,172 +952,20 @@ void WorldSession::UpdateInstanceEnterTimes()
 
 void WorldSession::ReadMovementInfo(WorldPacket &data, MovementInfo* mi)
 {
-    data >> mi->flags;
-    data >> mi->flags2;
-    data >> mi->time;
-    data >> mi->pos.PositionXYZOStream();
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT))
-    {
-        data >> mi->transport.guid.ReadAsPacked();
-        data >> mi->transport.pos.PositionXYZOStream();
-        data >> mi->transport.time;
-        data >> mi->transport.seat;
-
-        if (mi->HasExtraMovementFlag(MOVEMENTFLAG2_INTERPOLATED_MOVEMENT))
-            data >> mi->transport.time2;
-    }
-
-    if (mi->HasMovementFlag(MovementFlags(MOVEMENTFLAG_SWIMMING | MOVEMENTFLAG_FLYING)) || (mi->HasExtraMovementFlag(MOVEMENTFLAG2_ALWAYS_ALLOW_PITCHING)))
-        data >> mi->pitch;
-
-    data >> mi->fallTime;
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_FALLING))
-    {
-        data >> mi->jump.zspeed;
-        data >> mi->jump.sinAngle;
-        data >> mi->jump.cosAngle;
-        data >> mi->jump.xyspeed;
-    }
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_SPLINE_ELEVATION))
-        data >> mi->splineElevation;
-
-    //! Anti-cheat checks. Please keep them in seperate if () blocks to maintain a clear overview.
-    //! Might be subject to latency, so just remove improper flags.
-    #ifdef TRINITY_DEBUG
-    #define REMOVE_VIOLATING_FLAGS(check, maskToRemove) \
-    { \
-        if (check) \
-        { \
-            TC_LOG_DEBUG("entities.unit", "WorldSession::ReadMovementInfo: Violation of MovementFlags found ({}). " \
-                "MovementFlags: {}, MovementFlags2: {} for player {}. Mask {} will be removed.", \
-                STRINGIZE(check), mi->GetMovementFlags(), mi->GetExtraMovementFlags(), GetPlayer()->GetGUID().ToString(), maskToRemove); \
-            mi->RemoveMovementFlag((maskToRemove)); \
-        } \
-    }
-    #else
-    #define REMOVE_VIOLATING_FLAGS(check, maskToRemove) \
-        if (check) \
-            mi->RemoveMovementFlag((maskToRemove));
-    #endif
-
+    data >> *mi;
     if (mi->guid.IsEmpty())
     {
         TC_LOG_ERROR("entities.unit", "WorldSession::ReadMovementInfo: mi->guid is empty, opcode {}", static_cast<uint32>(data.GetOpcode()));
         return;
     }
 
-    Unit* mover = GetPlayer()->GetGUID() == mi->guid ? GetPlayer() : ObjectAccessor::GetUnit(*GetPlayer(), mi->guid);
-    if (!mover)
-    {
-        TC_LOG_ERROR("entities.unit", "WorldSession::ReadMovementInfo: If the server allows the unit (GUID {}) to be moved by the client of player {}, the unit should still exist! Opcode {}",
-            mi->guid.ToString(),
-            GetPlayer()->GetGUID().ToString(),
-            static_cast<uint32>(data.GetOpcode()));
-        return;
-    }
-
-    if (!GetPlayer()->GetVehicleBase() || !(GetPlayer()->GetVehicle()->GetVehicleInfo()->Flags & VEHICLE_FLAG_FIXED_POSITION))
-        REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_ROOT), MOVEMENTFLAG_ROOT);
-
-    /*! This must be a packet spoofing attempt. MOVEMENTFLAG_ROOT sent from the client is not valid
-        in conjunction with any of the moving movement flags such as MOVEMENTFLAG_FORWARD.
-        It will freeze clients that receive this player's movement info.
-    */
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_ROOT) && mi->HasMovementFlag(MOVEMENTFLAG_MASK_MOVING),
-        MOVEMENTFLAG_MASK_MOVING);
-
-    //! Cannot hover without SPELL_AURA_HOVER
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_HOVER) && !mover->HasAuraType(SPELL_AURA_HOVER),
-        MOVEMENTFLAG_HOVER);
-
-    //! Cannot ascend and descend at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_ASCENDING) && mi->HasMovementFlag(MOVEMENTFLAG_DESCENDING),
-        MOVEMENTFLAG_ASCENDING | MOVEMENTFLAG_DESCENDING);
-
-    //! Cannot move left and right at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_LEFT) && mi->HasMovementFlag(MOVEMENTFLAG_RIGHT),
-        MOVEMENTFLAG_LEFT | MOVEMENTFLAG_RIGHT);
-
-    //! Cannot strafe left and right at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_STRAFE_LEFT) && mi->HasMovementFlag(MOVEMENTFLAG_STRAFE_RIGHT),
-        MOVEMENTFLAG_STRAFE_LEFT | MOVEMENTFLAG_STRAFE_RIGHT);
-
-    //! Cannot pitch up and down at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_PITCH_UP) && mi->HasMovementFlag(MOVEMENTFLAG_PITCH_DOWN),
-        MOVEMENTFLAG_PITCH_UP | MOVEMENTFLAG_PITCH_DOWN);
-
-    //! Cannot move forwards and backwards at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_FORWARD) && mi->HasMovementFlag(MOVEMENTFLAG_BACKWARD),
-        MOVEMENTFLAG_FORWARD | MOVEMENTFLAG_BACKWARD);
-
-    //! Cannot walk on water without SPELL_AURA_WATER_WALK except for ghosts
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_WATERWALKING) &&
-        !mover->HasAuraType(SPELL_AURA_WATER_WALK) &&
-        !mover->HasAuraType(SPELL_AURA_GHOST),
-        MOVEMENTFLAG_WATERWALKING);
-
-    //! Cannot feather fall without SPELL_AURA_FEATHER_FALL
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_FALLING_SLOW) && !mover->HasAuraType(SPELL_AURA_FEATHER_FALL),
-        MOVEMENTFLAG_FALLING_SLOW);
-
-    /*! Cannot fly if no fly auras present. Exception is being a GM.
-        Note that we check for account level instead of Player::IsGameMaster() because in some
-        situations it may be feasable to use .gm fly on as a GM without having .gm on,
-        e.g. aerial combat.
-    */
-
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_FLYING | MOVEMENTFLAG_CAN_FLY) && GetSecurity() == SEC_PLAYER &&
-        !mover->HasAuraType(SPELL_AURA_FLY) &&
-        !mover->HasAuraType(SPELL_AURA_MOD_INCREASE_MOUNTED_FLIGHT_SPEED),
-        MOVEMENTFLAG_FLYING | MOVEMENTFLAG_CAN_FLY);
-
-    //! Cannot fly and fall at the same time
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_CAN_FLY | MOVEMENTFLAG_DISABLE_GRAVITY) && mi->HasMovementFlag(MOVEMENTFLAG_FALLING),
-        MOVEMENTFLAG_FALLING);
-
-    REMOVE_VIOLATING_FLAGS(mi->HasMovementFlag(MOVEMENTFLAG_SPLINE_ENABLED) &&
-        (!mover->movespline->Initialized() || mover->movespline->Finalized()), MOVEMENTFLAG_SPLINE_ENABLED);
-
-    #undef REMOVE_VIOLATING_FLAGS
+    ValidateMovementInfo(mi);
 }
 
 void WorldSession::WriteMovementInfo(WorldPacket* data, MovementInfo* mi)
 {
     *data << mi->guid.WriteAsPacked();
-    *data << mi->flags;
-    *data << mi->flags2;
-    *data << mi->time;
-    *data << mi->pos.PositionXYZOStream();
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_ONTRANSPORT))
-    {
-       *data << mi->transport.guid.WriteAsPacked();
-       *data << mi->transport.pos.PositionXYZOStream();
-       *data << mi->transport.time;
-       *data << mi->transport.seat;
-
-       if (mi->HasExtraMovementFlag(MOVEMENTFLAG2_INTERPOLATED_MOVEMENT))
-           *data << mi->transport.time2;
-    }
-
-    if (mi->HasMovementFlag(MovementFlags(MOVEMENTFLAG_SWIMMING | MOVEMENTFLAG_FLYING)) || mi->HasExtraMovementFlag(MOVEMENTFLAG2_ALWAYS_ALLOW_PITCHING))
-        *data << mi->pitch;
-
-    *data << mi->fallTime;
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_FALLING))
-    {
-        *data << mi->jump.zspeed;
-        *data << mi->jump.sinAngle;
-        *data << mi->jump.cosAngle;
-        *data << mi->jump.xyspeed;
-    }
-
-    if (mi->HasMovementFlag(MOVEMENTFLAG_SPLINE_ELEVATION))
-        *data << mi->splineElevation;
+    *data << *mi;
 }
 
 void WorldSession::ReadAddonsInfo(ByteBuffer &data)
@@ -1148,15 +998,10 @@ void WorldSession::ReadAddonsInfo(ByteBuffer &data)
     {
         try
         {
-            uint32 addonsCount = addonInfo.read<uint32>();
-            if (addonsCount > Addons::MaxSecureAddons)
-                addonsCount = Addons::MaxSecureAddons;
+            _addons.SecureAddons.resize(std::min(addonInfo.read<uint32>(), Addons::MaxSecureAddons));
 
-            _addons.SecureAddons.resize(addonsCount);
-
-            for (uint32 i = 0; i < addonsCount; ++i)
+            for (SecureAddonInfo& addon : _addons.SecureAddons)
             {
-                Addons::SecureAddonInfo& addon = _addons.SecureAddons[i];
                 uint32 publicKeyCrc, urlCrc;
 
                 addonInfo >> addon.Name >> addon.HasKey;
@@ -1164,28 +1009,27 @@ void WorldSession::ReadAddonsInfo(ByteBuffer &data)
 
                 TC_LOG_DEBUG("addon", "AddOn: {} (CRC: 0x{:x}) - has key: 0x{:x} - URL CRC: 0x{:x}", addon.Name, publicKeyCrc, addon.HasKey, urlCrc);
 
-                SavedAddon const* savedAddon = AddonMgr::GetAddonInfo(addon.Name);
-                if (savedAddon)
+                if (SavedAddon const* savedAddon = AddonMgr::GetAddonInfo(addon.Name))
                 {
                     if (publicKeyCrc != savedAddon->CRC)
                     {
                         if (addon.HasKey)
                         {
-                            addon.Status = Addons::SecureAddonInfo::BANNED;
+                            addon.Status = SecureAddonInfo::BANNED;
                             TC_LOG_WARN("addon", " Addon: {}: modified (CRC: 0x{:x}) - accountID {})", addon.Name, savedAddon->CRC, GetAccountId());
                         }
                         else
-                            addon.Status = Addons::SecureAddonInfo::SECURE_HIDDEN;
+                            addon.Status = SecureAddonInfo::SECURE_HIDDEN;
                     }
                     else
                     {
-                        addon.Status = Addons::SecureAddonInfo::SECURE_HIDDEN;
+                        addon.Status = SecureAddonInfo::SECURE_HIDDEN;
                         TC_LOG_DEBUG("addon", "Addon: {}: validated (CRC: 0x{:x}) - accountID {}", addon.Name, savedAddon->CRC, GetAccountId());
                     }
                 }
                 else
                 {
-                    addon.Status = Addons::SecureAddonInfo::BANNED;
+                    addon.Status = SecureAddonInfo::BANNED;
                     TC_LOG_WARN("addon", "Addon: {}: not registered as known secure addon - accountId {}", addon.Name, GetAccountId());
                 }
             }
@@ -1206,76 +1050,18 @@ void WorldSession::ReadAddonsInfo(ByteBuffer &data)
 
 void WorldSession::SendAddonsInfo()
 {
-    uint8 constexpr addonPublicKey[256] =
-    {
-        0xC3, 0x5B, 0x50, 0x84, 0xB9, 0x3E, 0x32, 0x42, 0x8C, 0xD0, 0xC7, 0x48, 0xFA, 0x0E, 0x5D, 0x54,
-        0x5A, 0xA3, 0x0E, 0x14, 0xBA, 0x9E, 0x0D, 0xB9, 0x5D, 0x8B, 0xEE, 0xB6, 0x84, 0x93, 0x45, 0x75,
-        0xFF, 0x31, 0xFE, 0x2F, 0x64, 0x3F, 0x3D, 0x6D, 0x07, 0xD9, 0x44, 0x9B, 0x40, 0x85, 0x59, 0x34,
-        0x4E, 0x10, 0xE1, 0xE7, 0x43, 0x69, 0xEF, 0x7C, 0x16, 0xFC, 0xB4, 0xED, 0x1B, 0x95, 0x28, 0xA8,
-        0x23, 0x76, 0x51, 0x31, 0x57, 0x30, 0x2B, 0x79, 0x08, 0x50, 0x10, 0x1C, 0x4A, 0x1A, 0x2C, 0xC8,
-        0x8B, 0x8F, 0x05, 0x2D, 0x22, 0x3D, 0xDB, 0x5A, 0x24, 0x7A, 0x0F, 0x13, 0x50, 0x37, 0x8F, 0x5A,
-        0xCC, 0x9E, 0x04, 0x44, 0x0E, 0x87, 0x01, 0xD4, 0xA3, 0x15, 0x94, 0x16, 0x34, 0xC6, 0xC2, 0xC3,
-        0xFB, 0x49, 0xFE, 0xE1, 0xF9, 0xDA, 0x8C, 0x50, 0x3C, 0xBE, 0x2C, 0xBB, 0x57, 0xED, 0x46, 0xB9,
-        0xAD, 0x8B, 0xC6, 0xDF, 0x0E, 0xD6, 0x0F, 0xBE, 0x80, 0xB3, 0x8B, 0x1E, 0x77, 0xCF, 0xAD, 0x22,
-        0xCF, 0xB7, 0x4B, 0xCF, 0xFB, 0xF0, 0x6B, 0x11, 0x45, 0x2D, 0x7A, 0x81, 0x18, 0xF2, 0x92, 0x7E,
-        0x98, 0x56, 0x5D, 0x5E, 0x69, 0x72, 0x0A, 0x0D, 0x03, 0x0A, 0x85, 0xA2, 0x85, 0x9C, 0xCB, 0xFB,
-        0x56, 0x6E, 0x8F, 0x44, 0xBB, 0x8F, 0x02, 0x22, 0x68, 0x63, 0x97, 0xBC, 0x85, 0xBA, 0xA8, 0xF7,
-        0xB5, 0x40, 0x68, 0x3C, 0x77, 0x86, 0x6F, 0x4B, 0xD7, 0x88, 0xCA, 0x8A, 0xD7, 0xCE, 0x36, 0xF0,
-        0x45, 0x6E, 0xD5, 0x64, 0x79, 0x0F, 0x17, 0xFC, 0x64, 0xDD, 0x10, 0x6F, 0xF3, 0xF5, 0xE0, 0xA6,
-        0xC3, 0xFB, 0x1B, 0x8C, 0x29, 0xEF, 0x8E, 0xE5, 0x34, 0xCB, 0xD1, 0x2A, 0xCE, 0x79, 0xC3, 0x9A,
-        0x0D, 0x36, 0xEA, 0x01, 0xE0, 0xAA, 0x91, 0x20, 0x54, 0xF0, 0x72, 0xD8, 0x1E, 0xC7, 0x89, 0xD2
-    };
-
-    WorldPacket data(SMSG_ADDON_INFO, 4);
-
-    for (Addons::SecureAddonInfo const& addonInfo : _addons.SecureAddons)
-    {
-        // fresh install, not yet created Interface\Addons\addon_name\addon_name.pub files
-        uint8 infoProvided = addonInfo.Status != Addons::SecureAddonInfo::BANNED || addonInfo.HasKey;
-
-        data << uint8(addonInfo.Status);                            // Status
-        data << uint8(infoProvided);                                // InfoProvided
-        if (infoProvided)
-        {
-            data << uint8(!addonInfo.HasKey);                       // KeyProvided
-            if (!addonInfo.HasKey)                                  // if CRC is wrong, add public key (client need it)
-            {
-                TC_LOG_DEBUG("addon", "AddOn: {}: key missing: sending pubkey to accountID {}", addonInfo.Name, GetAccountId());
-
-                data.append(addonPublicKey, sizeof(addonPublicKey));
-            }
-
-            data << uint32(0);                                      // Revision (from .toc), can be used by SECURE_VISIBLE to display "update available" in client addon controls
-        }
-
-        data << uint8(0);                                           // UrlProvided
-        //if (usesURL)
-        //    data << uint8(0);                                     // URL, client will create internet shortcut with this destination in Interface\Addons\addon_name\addon_name.url
-    }
-
     // Send new uncached banned addons
     AddonMgr::BannedAddonList const* bannedAddons = AddonMgr::GetBannedAddons();
     uint32 lastBannedAddOnTimestamp = _addons.LastBannedAddOnTimestamp;
     if (!bannedAddons->empty() && bannedAddons->back().Timestamp < lastBannedAddOnTimestamp) // cheating attempt OR connecting to a realm with different configured banned addons, send everything
         lastBannedAddOnTimestamp = 0;
 
-    std::size_t sizePos = data.wpos();
-    uint32 bannedAddonCount = 0;
-    data << uint32(0);
     auto itr = std::ranges::lower_bound(*bannedAddons, lastBannedAddOnTimestamp, std::ranges::less(), &BannedAddon::Timestamp);
-    for (; itr != bannedAddons->end(); ++itr)
-    {
-        data << uint32(itr->Id);
-        data.append(itr->NameMD5);
-        data.append(itr->VersionMD5);
-        data << uint32(itr->Timestamp);
-        data << uint32(1);  // IsBanned
-        bannedAddonCount++;
-    }
 
-    data.put<uint32>(sizePos, bannedAddonCount);
-
-    SendPacket(&data);
+    WorldPackets::ClientConfig::AddonInfo addonInfo;
+    addonInfo.Addons = _addons.SecureAddons;
+    addonInfo.BannedAddons = { itr, bannedAddons->end() };
+    SendPacket(addonInfo.Write());
 }
 
 void WorldSession::SetPlayer(Player* player)
@@ -1725,8 +1511,8 @@ uint32 WorldSession::DosProtection::GetMaxPacketCounterAllowed(uint16 opcode) co
         //npcbot: prevent kicks when too many bots spawned in one spot
         case CMSG_GET_MIRRORIMAGE_DATA:
         {
-            if (BotMgr::GetBotInfoPacketsLimit() > -1)
-                maxPacketCounterAllowed = BotMgr::GetBotInfoPacketsLimit();
+            if (BotCfg::GetBotInfoPacketsLimit() > -1)
+                maxPacketCounterAllowed = BotCfg::GetBotInfoPacketsLimit();
             else
                 maxPacketCounterAllowed = 100;
             break;
@@ -1777,7 +1563,7 @@ uint32 WorldSession::AdjustClientMovementTime(uint32 time) const
         return uint32(movementTime);
 }
 
-bool WorldSession::IsRightUnitBeingMoved(ObjectGuid guid)
+bool WorldSession::IsRightUnitBeingMoved(ObjectGuid guid) const
 {
     GameClient* client = GetGameClient();
 

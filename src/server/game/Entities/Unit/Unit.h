@@ -827,6 +827,8 @@ class TC_GAME_API Unit : public WorldObject
 
         virtual void Update(uint32 time) override;
 
+        void Heartbeat() override;
+
         void setAttackTimer(WeaponAttackType type, uint32 time) { m_attackTimer[type] = time; }
         void resetAttackTimer(WeaponAttackType type = BASE_ATTACK);
         uint32 getAttackTimer(WeaponAttackType type) const { return m_attackTimer[type]; }
@@ -1210,7 +1212,6 @@ class TC_GAME_API Unit : public WorldObject
         void JumpTo(WorldObject* obj, float speedZ, bool withOrientation = false);
 
         void MonsterMoveWithSpeed(float x, float y, float z, float speed, bool generatePath = false, bool forceDestination = false);
-        void SendMovementFlagUpdate(bool self = false);
 
         void SetHoverHeight(float hoverHeight) { SetFloatValue(UNIT_FIELD_HOVERHEIGHT, hoverHeight); }
 
@@ -1227,10 +1228,8 @@ class TC_GAME_API Unit : public WorldObject
         bool SetHover(bool enable, bool updateAnimTier = true);
 
         void SetInFront(WorldObject const* target);
-        void SetFacingTo(float const ori, bool force = true);
-        void SetFacingToObject(WorldObject const* object, bool force = true);
-
-        void BuildHeartBeatMsg(WorldPacket* data) const;
+        void SetFacingTo(float ori, bool force = true, uint32 movementId = EVENT_FACE);
+        void SetFacingToObject(WorldObject const* object, bool force = true, uint32 movementId = EVENT_FACE);
 
         bool IsAlive() const { return (m_deathState == ALIVE); }
         bool isDying() const { return (m_deathState == JUST_DIED); }
@@ -1262,6 +1261,10 @@ class TC_GAME_API Unit : public WorldObject
         void SetCreator(Unit* creator);
         Unit* GetCreator() const { return m_creator; }
         Unit* m_creator = nullptr;
+
+        void SetLastSpellGoTime(TimePoint time_point) { last_spell_go_time_point = time_point; }
+        TimePoint GetLastSpellGoTime() const { return last_spell_go_time_point; }
+        TimePoint last_spell_go_time_point{};
         //end npcbot
 
         bool IsControlledByPlayer() const { return m_ControlledByPlayer; }
@@ -1371,7 +1374,7 @@ class TC_GAME_API Unit : public WorldObject
         void RemoveNotOwnSingleTargetAuras(uint32 newPhase = 0x0);
         void RemoveAurasWithInterruptFlags(uint32 flag, uint32 except = 0);
         void RemoveAurasWithAttribute(uint32 flags);
-        void RemoveAurasWithFamily(SpellFamilyNames family, uint32 familyFlag1, uint32 familyFlag2, uint32 familyFlag3, ObjectGuid casterGUID);
+        void RemoveAurasWithFamily(SpellFamilyNames family, flag96 const& familyFlag, ObjectGuid casterGUID);
         void RemoveAurasWithMechanic(uint32 mechanicMaskToRemove, AuraRemoveMode removeMode = AURA_REMOVE_BY_DEFAULT, uint32 exceptSpellId = 0, bool withEffectMechanics = false);
         void RemoveMovementImpairingAuras(bool withRoot);
         void RemoveAurasByShapeShift();
@@ -1927,13 +1930,14 @@ class TC_GAME_API Unit : public WorldObject
         virtual void AtEnterCombat() { }
         virtual void AtExitCombat();
 
-        virtual void AtEngage(Unit* /*target*/) {}
+        virtual void AtEngage(Unit* target);
         virtual void AtDisengage() {}
 
     private:
-
+        friend class ImmediateMovementGenerator; // for UpdateSplineMovement
         void UpdateSplineMovement(uint32 t_diff);
         void UpdateSplinePosition();
+        void SendFlightSplineSyncUpdate();
         void InterruptMovementBasedAuras();
         void CheckPendingMovementAcks();
 
@@ -1953,7 +1957,6 @@ class TC_GAME_API Unit : public WorldObject
 
         uint32 m_state;                                     // Even derived shouldn't modify
         uint32 m_lastManaUse;                               // msecs
-        TimeTracker m_splineSyncTimer;
 
         Diminishing m_Diminishing;
 

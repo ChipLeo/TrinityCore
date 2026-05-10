@@ -1,4 +1,6 @@
 #include "bot_ai.h"
+#include "botdatamgr.h"
+#include "botlogtraits.h"
 #include "botmgr.h"
 #include "bottext.h"
 #include "bottraits.h"
@@ -195,18 +197,13 @@ enum PaladinSpecial
     IMPROVED_DEVOTION_AURA_SPELL        = 63514
 };
 
-static const uint32 Paladin_spells_damage_arr[] =
+static const std::vector<uint32> Paladin_spells_damage
 { AVENGERS_SHIELD_1, CONSECRATION_1, CRUSADER_STRIKE_1, DIVINE_STORM_1, EXORCISM_1, JUDGEMENT_OF_LIGHT_1,
 JUDGEMENT_OF_WISDOM_1, JUDGEMENT_OF_JUSTICE_1, HAMMER_OF_THE_RIGHTEOUS_1, HAMMER_OF_WRATH_1, HOLY_SHIELD_1,
 HOLY_SHOCK_1, HOLY_WRATH_1, SHIELD_OF_RIGHTEOUSNESS_1, HAND_OF_RECKONING_1 };
-
-static const uint32 Paladin_spells_cc_arr[] =
-{ HAMMER_OF_JUSTICE_1, HOLY_WRATH_1, REPENTANCE_1, TURN_EVIL_1 };
-
-static const uint32 Paladin_spells_heal_arr[] =
-{ BEACON_OF_LIGHT_1, FLASH_OF_LIGHT_1, HOLY_LIGHT_1, HOLY_SHOCK_1, LAY_ON_HANDS_1 };
-
-static const uint32 Paladin_spells_support_arr[] =
+static const std::vector<uint32> Paladin_spells_cc{ HAMMER_OF_JUSTICE_1, HOLY_WRATH_1, REPENTANCE_1, TURN_EVIL_1 };
+static const std::vector<uint32> Paladin_spells_heal{ BEACON_OF_LIGHT_1, FLASH_OF_LIGHT_1, HOLY_LIGHT_1, HOLY_SHOCK_1, LAY_ON_HANDS_1 };
+static const std::vector<uint32> Paladin_spells_support
 { /*DEVOTION_AURA_1, CONCENTRATION_AURA_1, FIRE_RESISTANCE_AURA_1, FROST_RESISTANCE_AURA_1, SHADOW_RESISTANCE_AURA_1,
 RETRIBUTION_AURA_1, CRUSADER_AURA_1, */AURA_MASTERY_1, AVENGING_WRATH_1, BLESSING_OF_MIGHT_1, BLESSING_OF_WISDOM_1,
 BLESSING_OF_KINGS_1, BLESSING_OF_SANCTUARY_1, CLEANSE_1, DIVINE_FAVOR_1, DIVINE_ILLUMINATION_1, DIVINE_INTERVENTION_1,
@@ -214,11 +211,6 @@ DIVINE_PLEA_1, DIVINE_PROTECTION_1, DIVINE_SACRIFICE_1, DIVINE_SHIELD_1, HAND_OF
 HAND_OF_RECKONING_1, HAND_OF_SACRIFICE_1, HAND_OF_SALVATION_1, HOLY_SHIELD_1, PURIFY_1, REDEMPTION_1,
 RIGHTEOUS_DEFENSE_1, RIGHTEOUS_FURY_1, SACRED_SHIELD_1, SEAL_OF_RIGHTEOUSNESS_1, SEAL_OF_JUSTICE_1, SEAL_OF_LIGHT_1,
 SEAL_OF_WISDOM_1, SEAL_OF_COMMAND_1, SEAL_OF_VENGEANCE_1, SEAL_OF_CORRUPTION_1 };
-
-static const std::vector<uint32> Paladin_spells_damage(FROM_ARRAY(Paladin_spells_damage_arr));
-static const std::vector<uint32> Paladin_spells_cc(FROM_ARRAY(Paladin_spells_cc_arr));
-static const std::vector<uint32> Paladin_spells_heal(FROM_ARRAY(Paladin_spells_heal_arr));
-static const std::vector<uint32> Paladin_spells_support(FROM_ARRAY(Paladin_spells_support_arr));
 
 class paladin_bot : public CreatureScript
 {
@@ -411,7 +403,7 @@ public:
                 {
                     std::list<Unit*> targets;
                     GetNearbyFriendlyTargetsList(targets, 40.0f);
-                    targets.remove_if([](Unit const* unit) {
+                    std::erase_if(targets, [](Unit const* unit) {
                         return (!unit->IsInCombat() && unit->getAttackers().empty()) || unit->GetAuraEffect(SPELL_AURA_DUMMY, SPELLFAMILY_PALADIN, 0x0, 0x80000, 0x0);
                     });
                     if (!targets.empty())
@@ -424,10 +416,9 @@ public:
                         target = me;
                     else
                     {
-                        BotMap const* map = master->GetBotMgr()->GetBotMap();
-                        for (BotMap::const_iterator citr = map->cbegin(); citr != map->cend(); ++citr)
+                        for (auto const& [_, bot] : *master->GetBotMgr()->GetBotMap())
                         {
-                            u = citr->second;
+                            u = bot;
                             if (!u || !u->IsInWorld() || me->GetMap() != u->FindMap() || !u->IsAlive() || !u->IsInCombat() ||
                                 u->getAttackers().empty() || u->ToCreature()->IsTempBot() || me->GetDistance(u) > 40 ||
                                 u->GetAuraEffect(SPELL_AURA_DUMMY, SPELLFAMILY_PALADIN, 0x0, 0x80000, 0x0))
@@ -443,7 +434,7 @@ public:
             {
                 std::vector<Unit*> members = BotMgr::GetAllGroupMembers(gr);
                 std::array<decltype(members), 3> member_sets{}; //tanks, players, npcbots
-                for (size_t i = 0; i < member_sets.size(); ++i)
+                for (auto i : NPCBots::index_array<size_t, std::size(member_sets)>)
                     member_sets[i].reserve(((members.size() >> 2) + 1) * (i + 1));
 
                 for (Unit* member : members)
@@ -534,7 +525,7 @@ public:
             else
             {
                 std::vector<Unit*> members = BotMgr::GetAllGroupMembers(gr);
-                for (uint8 i = 0; i < 2; ++i)
+                for (auto i : NPCBots::index_array<uint8, 2>)
                 {
                     for (Unit* member : members)
                     {
@@ -597,7 +588,7 @@ public:
             else
             {
                 std::vector<Unit*> members = BotMgr::GetAllGroupMembers(gr);
-                for (uint8 i = 0; i < 2; ++i)
+                for (auto i : NPCBots::index_array<uint8, 2>)
                 {
                     for (Unit* member : members)
                     {
@@ -623,19 +614,15 @@ public:
                     return false; //immune to stuns
             }
 
-            SpellInfo const* spellInfo;
-            AuraApplication const* app;
-            Unit::AuraApplicationMap const& auras = target->GetAppliedAuras();
-            for (Unit::AuraApplicationMap::const_iterator i = auras.begin(); i != auras.end(); ++i)
+            for (auto const& [_, app] : target->GetAppliedAuras())
             {
-                app = i->second;
                 if (!app || app->IsPositive() || app->GetBase()->IsPassive() || app->GetBase()->GetDuration() < 2000)
                     continue;
-                spellInfo = app->GetBase()->GetSpellInfo();
+                SpellInfo const* spellInfo = app->GetBase()->GetSpellInfo();
                 if (spellInfo->Attributes & SPELL_ATTR0_HIDDEN_CLIENTSIDE) continue;
                 //if (spellInfo->AttributesEx & SPELL_ATTR1_DONT_DISPLAY_IN_AURA_BAR) continue;
                 if (spellInfo->GetSpellMechanicMaskByEffectMask(app->GetEffectMask()) &
-                    ((1<<MECHANIC_SNARE) | (1<<MECHANIC_ROOT) | (!canUnstun ? 0 : (1<<MECHANIC_STUN))))
+                    ((1u<<MECHANIC_SNARE) | (1u<<MECHANIC_ROOT) | (!canUnstun ? 0 : (1u<<MECHANIC_STUN))))
                 {
                     uint32 dispel = spellInfo->Dispel;
                     uint32 spell;
@@ -675,13 +662,13 @@ public:
                  return;
 
             std::vector<Unit*> members = BotMgr::GetAllGroupMembers(gr);
-            for (uint8 i = 0; i < 2; ++i)
+            for (auto i : NPCBots::index_array<uint8, 2>)
             {
                 for (Unit* member : members)
                 {
                     if (!(i == 0 ? member->IsPlayer() : member->IsNPCBot()) || me->GetMap() != member->FindMap() ||
                         !member->IsInCombat() || IsTank(member) || me->GetDistance(member) > 30 ||
-                        (IsTankingClass(i == 0 ? member->GetClass() : member->ToCreature()->GetBotClass()) && !me->GetMap()->IsRaid()) ||
+                        (BotDataMgr::IsTankingClass(i == 0 ? member->GetClass() : member->ToCreature()->GetBotClass()) && !me->GetMap()->IsRaid()) ||
                         (member->IsNPCBot() && member->ToCreature()->IsTempBot()) ||
                         member->HasAuraTypeWithFamilyFlags(SPELL_AURA_PERIODIC_TRIGGER_SPELL_WITH_VALUE, SPELLFAMILY_PALADIN, 0x100))
                         continue;
@@ -737,7 +724,7 @@ public:
                 me->InterruptNonMeleeSpells(false);
                 if (doCast(target, GetSpell(LAY_ON_HANDS_1)))
                 {
-                    if (target->GetTypeId() == TYPEID_PLAYER)
+                    if (target->IsPlayer())
                         ReportSpellCast(LAY_ON_HANDS_1, LocalizedNpcText(target->ToPlayer(), BOT_TEXT__ON_YOU), target->ToPlayer());
 
                     if (!IAmFree() && target != master)
@@ -776,7 +763,7 @@ public:
             {
                 //Aura Mastery
                 if (hp < 60 && _myaura == CONCENTRATION_AURA_1 && IsSpellReady(AURA_MASTERY_1, diff, false) && Rand() < 90 &&
-                    ((!me->getAttackers().empty() && (*me->getAttackers().begin())->GetTypeId() == TYPEID_PLAYER) ||
+                    ((!me->getAttackers().empty() && (*me->getAttackers().begin())->IsPlayer()) ||
                     me->GetMap()->Instanceable() || tanking))
                     if (doCast(me, GetSpell(AURA_MASTERY_1)))
                     {}
@@ -808,7 +795,7 @@ public:
 
         void BreakCC(uint32 diff) override
         {
-            if (me->GetLevel() >= 35 && GetSpec() == BOT_SPEC_PALADIN_RETRIBUTION && IsSpellReady(HAND_OF_FREEDOM_1, diff) && Rand() < 30 && me->HasAuraWithMechanic(1<<MECHANIC_STUN))
+            if (me->GetLevel() >= 35 && GetSpec() == BOT_SPEC_PALADIN_RETRIBUTION && IsSpellReady(HAND_OF_FREEDOM_1, diff) && Rand() < 30 && me->HasAuraWithMechanic(1u<<MECHANIC_STUN))
             {
                 if (me->IsMounted())
                     me->RemoveAurasByType(SPELL_AURA_MOUNTED);
@@ -877,7 +864,7 @@ public:
             if (!CheckAttackTarget())
                 return;
 
-            Repentance(diff);
+            CheckRepentance(diff);
             Counter(diff);
             TurnEvil(diff);
 
@@ -935,7 +922,7 @@ public:
                 {
                     Creature const* cre = victim->ToCreature();
                     if (cre && cre->GetCreatureTemplate()->rank != CREATURE_ELITE_NORMAL &&
-                        (cre->GetCreatureTemplate()->MechanicImmuneMask & (1<<(MECHANIC_STUN-1))))
+                        (cre->GetCreatureTemplate()->MechanicImmuneMask & (1u<<(MECHANIC_STUN-1))))
                         JUSTICE = 0;
                 }
                 SEAL = COMMAND ? COMMAND : JUSTICE ? JUSTICE : RIGHT;
@@ -1016,7 +1003,7 @@ public:
             }
             if (RETRIBUTION_AURA &&
                 (!(mask & SPECIFIC_AURA_RETRIBUTION) || idMap[RETRIBUTION_AURA_1] < RETRIBUTION_AURA) &&
-                (IsMeleeClass(master->GetClass()) || IsMelee()))
+                (BotDataMgr::IsMeleeClass(master->GetClass()) || IsMelee()))
             {
                 if (doCast(me, RETRIBUTION_AURA))
                     return;
@@ -1096,7 +1083,7 @@ public:
             }
 
             uint8 Class = 0;
-            if (target->GetTypeId() == TYPEID_PLAYER)
+            if (target->IsPlayer())
                 Class = target->GetClass();
             else if (Creature* cre = target->ToCreature())
                 Class = cre->GetBotAI() ? cre->GetBotAI()->GetBotClass() : cre->GetClass();
@@ -1157,14 +1144,12 @@ public:
             return false;
         }
 
-        void Repentance(uint32 diff, Unit* target = nullptr)
+        void CheckRepentance(uint32 diff)
         {
-            if (target)
-            {
-                if (IsSpellReady(REPENTANCE_1, diff) && doCast(target, GetSpell(REPENTANCE_1)))
-                    return;
-            }
-            else if (IsSpellReady(REPENTANCE_1, diff))
+            if (Rand() > 25)
+                return;
+
+            if (IsSpellReady(REPENTANCE_1, diff))
             {
                 Unit* u = FindStunTarget();
                 if (u && u->GetVictim() != me && doCast(u, GetSpell(REPENTANCE_1)))
@@ -1174,32 +1159,14 @@ public:
 
         void Counter(uint32 diff)
         {
-            if (IsCasting())
-                return;
-            if (Rand() > 60)
+            if (Rand() > 30)
                 return;
 
-            Unit* target = IsSpellReady(REPENTANCE_1, diff) ? FindCastingTarget(20, 0, REPENTANCE_1) : nullptr;
-            if (target)
-                Repentance(diff, target); //first check repentance
-            if (!target && IsSpellReady(TURN_EVIL_1, diff))
-            {
-                target = FindCastingTarget(20, 0, TURN_EVIL_1);
-                if (target && doCast(target, GetSpell(TURN_EVIL_1)))
-                    return;
-            }
-            if (!target && IsSpellReady(HOLY_WRATH_1, diff, false) && HasRole(BOT_ROLE_DPS))
-            {
-                target = FindCastingTarget(8, 0, TURN_EVIL_1); //here we check target as with turn evil cuz of same requirements
-                if (target && doCast(me, GetSpell(HOLY_WRATH_1)))
-                    return;
-            }
-            if (!target && IsSpellReady(HAMMER_OF_JUSTICE_1, diff, false))
-            {
-                target = FindCastingTarget(10, 0, HAMMER_OF_JUSTICE_1);
-                if (target && doCast(target, GetSpell(HAMMER_OF_JUSTICE_1)))
-                {}
-            }
+            for (const auto base_spell : { REPENTANCE_1, TURN_EVIL_1, HOLY_WRATH_1, HAMMER_OF_JUSTICE_1 })
+                if (IsSpellReady(base_spell, diff, false) && !HasQueuedSpellAction(base_spell))
+                    if (Unit const* target = FindCastingTarget(base_spell == HOLY_WRATH_1 ? 8.0f : CalcSpellMaxRange(base_spell), 0, base_spell))
+                        if (EnqueueCounterSpellAction(target->GetGUID(), base_spell, true))
+                            return;
         }
 
         void TurnEvil(uint32 diff)
@@ -1303,12 +1270,12 @@ public:
             //HAND OF RECKONING //No GCD
             Unit* u = mytar->GetVictim();
             if (IsSpellReady(HAND_OF_RECKONING_1, diff, false) && can_do_holy && u && u != me && Rand() < 50 && dist < 30 &&
-                mytar->GetTypeId() == TYPEID_UNIT && !mytar->IsControlledByPlayer() &&
+                mytar->IsCreature() && !mytar->IsControlledByPlayer() &&
                 !CCed(mytar) && HasRole(BOT_ROLE_DPS) && !mytar->HasAuraType(SPELL_AURA_MOD_TAUNT) &&
                 (!IsTank(u) || (IsTank() && GetHealthPCT(me) > 67 &&
                 (GetHealthPCT(u) < 30 || (IsOffTank() && !IsOffTank(u) && IsPointedOffTankingTarget(mytar)) ||
                 (!IsOffTank() && IsOffTank(u) && IsPointedTankingTarget(mytar))))) &&
-                ((!IsTankingClass(u->GetClass()) && GetHealthPCT(u) < 80) || IsTank()) &&
+                ((!BotDataMgr::IsTankingClass(u->GetClass()) && GetHealthPCT(u) < 80) || IsTank()) &&
                 IsInBotParty(u))
             {
                 if (doCast(mytar, GetSpell(HAND_OF_RECKONING_1)))
@@ -1317,7 +1284,7 @@ public:
             //HAND OF RECKONING 2 (distant)
             if (IsSpellReady(HAND_OF_RECKONING_1, diff, false) && !IAmFree() && u == me && Rand() < 30 && IsTank() && HasRole(BOT_ROLE_DPS) &&
                 (IsOffTank() || master->GetBotMgr()->GetNpcBotsCountByRole(BOT_ROLE_TANK_OFF) == 0) &&
-                !(me->GetLevel() >= 40 && mytar->GetTypeId() == TYPEID_UNIT &&
+                !(me->GetLevel() >= 40 && mytar->IsCreature() &&
                 (mytar->ToCreature()->IsDungeonBoss() || mytar->ToCreature()->isWorldBoss())))
             {
                 Unit* tUnit = FindDistantTauntTarget();
@@ -1329,8 +1296,8 @@ public:
             }
             //RIGHTEOUS DEFENSE //No GCD
             if (IsSpellReady(RIGHTEOUS_DEFENSE_1, diff, false) && !IAmFree() && u && u != me && IsTank() &&
-                me->GetDistance(u) < 40 && mytar->GetTypeId() == TYPEID_UNIT && !mytar->IsControlledByPlayer() &&
-                !IsTankingClass(u->GetClass()) && GetHealthPCT(u) < 80 &&
+                me->GetDistance(u) < 40 && mytar->IsCreature() && !mytar->IsControlledByPlayer() &&
+                !BotDataMgr::IsTankingClass(u->GetClass()) && GetHealthPCT(u) < 80 &&
                 !CCed(mytar) && !mytar->HasAuraType(SPELL_AURA_MOD_TAUNT) &&
                 (!IsTank(u) || (GetHealthPCT(u) < 30 && GetHealthPCT(me) > 67)) &&
                 IsInBotParty(u) && Rand() < 20 + 30 * u->getAttackers().size())
@@ -1340,7 +1307,7 @@ public:
             }
             //RIGHTEOUS DEFENSE 2 (distant)
             if (IsSpellReady(RIGHTEOUS_DEFENSE_1, diff, false) && !IAmFree() && u == me && IsTank() && Rand() < 30 &&
-                !(me->GetLevel() >= 40 && mytar->GetTypeId() == TYPEID_UNIT &&
+                !(me->GetLevel() >= 40 && mytar->IsCreature() &&
                 (mytar->ToCreature()->IsDungeonBoss() || mytar->ToCreature()->isWorldBoss())))
             {
                 Unit* tUnit = FindDistantTauntTarget(40, true);
@@ -1360,7 +1327,7 @@ public:
             //Avenging Wrath (tank - big threat, dps - big hp, heal - divine plea counter)
             if (IsSpellReady(AVENGING_WRATH_1, diff, false) && can_do_holy && avDelayTimer <= diff &&
                 HasRole(BOT_ROLE_HEAL|BOT_ROLE_DPS) && Rand() < 35 && dist < 30 &&
-                IsTank() ? (mytar->GetTypeId() == TYPEID_UNIT && (mytar->ToCreature()->IsDungeonBoss() || mytar->ToCreature()->isWorldBoss())) :
+                IsTank() ? (mytar->IsCreature() && (mytar->ToCreature()->IsDungeonBoss() || mytar->ToCreature()->isWorldBoss())) :
                 (!HasRole(BOT_ROLE_HEAL) || !HasRole(BOT_ROLE_RANGED)) ? (mytar->GetHealth() > me->GetMaxHealth()/4 * (1 + mytar->getAttackers().size())) :
                 (me->GetAuraEffect(SPELL_AURA_OBS_MOD_POWER, SPELLFAMILY_PALADIN, 0x0, 0x80004000, 0x1) != nullptr))
             {
@@ -1407,10 +1374,9 @@ public:
                 {
                     //has joj from someone else
                     bool canCast = true;
-                    Unit::AuraEffectList const& notSpeedAuras = mytar->GetAuraEffectsByType(SPELL_AURA_USE_NORMAL_MOVEMENT_SPEED);
-                    for (Unit::AuraEffectList::const_iterator itr = notSpeedAuras.begin(); itr != notSpeedAuras.end(); ++itr)
+                    for (AuraEffect const* aeff : mytar->GetAuraEffectsByType(SPELL_AURA_USE_NORMAL_MOVEMENT_SPEED))
                     {
-                        if ((*itr)->GetCasterGUID() != me->GetGUID() && (*itr)->GetBase()->GetDuration() > 2000)
+                        if (aeff->GetCasterGUID() != me->GetGUID() && aeff->GetBase()->GetDuration() > 2000)
                         {
                             canCast = false;
                             break;
@@ -1419,12 +1385,9 @@ public:
                     if (canCast)
                     {
                         //has sprint or something
-                        Unit::AuraEffectList const& speedAuras = mytar->GetAuraEffectsByType(SPELL_AURA_MOD_INCREASE_SPEED);
-                        for (Unit::AuraEffectList::const_iterator itr = speedAuras.begin(); itr != speedAuras.end(); ++itr)
+                        for (AuraEffect const* aeff : mytar->GetAuraEffectsByType(SPELL_AURA_MOD_INCREASE_SPEED))
                         {
-                            if (!(*itr)->GetBase()->IsPassive() &&
-                                (*itr)->GetBase()->GetDuration() > 2000 &&
-                                (*itr)->GetAmount() >= 30)
+                            if (!aeff->GetBase()->IsPassive() && aeff->GetBase()->GetDuration() > 2000 && aeff->GetAmount() >= 30)
                             {
                                 JUDGEMENT = JUDGEMENT_OF_JUSTICE_1;
                                 break;
@@ -2068,7 +2031,7 @@ public:
                 {
                     //Improved Blessing of Might: 25% increased effect
                     if (Aura* migh = target->GetAura(spellId, me->GetGUID()))
-                        for (uint8 i = 0; i != EFFECT_2; ++i) // 2 effects
+                        for (auto i : NPCBots::index_array<uint8, EFFECT_2>) // 2 effects
                             if (AuraEffect* eff = migh->GetEffect(i))
                                 eff->ChangeAmount((eff->GetAmount() * 125) / 100);
                 }
@@ -2547,7 +2510,7 @@ public:
 /*misc*/uint32 _myaura;
 /*misc*/int32 _sacDamage;
 
-        typedef std::unordered_map<uint32 /*baseId*/, int32 /*amount*/> HealMap;
+        using HealMap = std::unordered_map<uint32 /*baseId*/, int32 /*amount*/>;
         HealMap _heals;
 
         //uint32 _getBlessingsMask(Unit const*) const
@@ -2559,11 +2522,10 @@ public:
         {
             uint32 mask = 0;
 
-            Unit::AuraApplicationMap const& aurapps = target->GetAppliedAuras();
-            for (Unit::AuraApplicationMap::const_iterator itr = aurapps.begin(); itr != aurapps.end(); ++itr)
+            for (auto const& [_, auraApp] : target->GetAppliedAuras())
             {
                 bool blessing = true;
-                switch (itr->second->GetBase()->GetSpellInfo()->GetFirstRankSpell()->Id)
+                switch (auraApp->GetBase()->GetSpellInfo()->GetFirstRankSpell()->Id)
                 {
                     case BLESSING_OF_WISDOM_1:
                     case GREATER_BLESSING_OF_WISDOM_1:
@@ -2587,7 +2549,7 @@ public:
                         break;
                 }
 
-                if (blessing && itr->second->GetBase()->GetCasterGUID() == me->GetGUID())
+                if (blessing && auraApp->GetBase()->GetCasterGUID() == me->GetGUID())
                     mask |= SPECIFIC_BLESSING_MY_BLESSING;
             }
 
@@ -2601,11 +2563,10 @@ public:
         {
             uint32 mask = 0;
 
-            Unit::AuraApplicationMap const& aurapps = me->GetAppliedAuras();
-            for (Unit::AuraApplicationMap::const_iterator itr = aurapps.begin(); itr != aurapps.end(); ++itr)
+            for (auto const& [spellId, auraApp] : me->GetAppliedAuras())
             {
                 bool isAura = true;
-                uint32 baseId = itr->second->GetBase()->GetSpellInfo()->GetFirstRankSpell()->Id;
+                uint32 baseId = auraApp->GetBase()->GetSpellInfo()->GetFirstRankSpell()->Id;
                 switch (baseId)
                 {
                     case DEVOTION_AURA_1:
@@ -2636,8 +2597,8 @@ public:
 
                 if (isAura)
                 {
-                    idMap[baseId] = itr->first;
-                    if (itr->second->GetBase()->GetCasterGUID() == me->GetGUID())
+                    idMap[baseId] = spellId;
+                    if (auraApp->GetBase()->GetCasterGUID() == me->GetGUID())
                         mask |= SPECIFIC_AURA_MY_AURA;
                 }
             }

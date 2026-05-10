@@ -574,7 +574,7 @@ m_caster((info->HasAttribute(SPELL_ATTR6_CAST_BY_CHARMER) && caster->GetCharmerO
     m_spellState = SPELL_STATE_NULL;
     _triggeredCastFlags = triggerFlags;
     if (info->HasAttribute(SPELL_ATTR4_CAN_CAST_WHILE_CASTING))
-        _triggeredCastFlags = TriggerCastFlags(uint32(_triggeredCastFlags) | TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_CAST_DIRECTLY);
+        _triggeredCastFlags |= TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_CAST_DIRECTLY;
 
     m_CastItem = nullptr;
     m_castItemGUID.Clear();
@@ -1633,7 +1633,7 @@ void Spell::SelectImplicitTargetObjectTargets(SpellEffectInfo const& spellEffect
 
 void Spell::SelectImplicitChainTargets(SpellEffectInfo const& spellEffectInfo, SpellImplicitTargetInfo const& targetType, WorldObject* target, uint32 effMask)
 {
-    uint32 maxTargets = spellEffectInfo.ChainTarget;
+    uint32 maxTargets = spellEffectInfo.ChainTargets;
     if (Player* modOwner = m_caster->GetSpellModOwner())
         modOwner->ApplySpellMod(m_spellInfo->Id, SPELLMOD_JUMP_TARGETS, maxTargets, this);
 
@@ -2408,6 +2408,30 @@ void Spell::AddDestTarget(SpellDestination const& dest, uint32 effIndex)
     m_destTargets[effIndex] = dest;
 }
 
+int64 Spell::GetUnitTargetCountForEffect(SpellEffIndex effect) const
+{
+    return std::count_if(m_UniqueTargetInfo.begin(), m_UniqueTargetInfo.end(), [effect](TargetInfo const& targetInfo)
+    {
+        return targetInfo.EffectMask & (1 << effect);
+    });
+}
+
+int64 Spell::GetGameObjectTargetCountForEffect(SpellEffIndex effect) const
+{
+    return std::count_if(m_UniqueGOTargetInfo.begin(), m_UniqueGOTargetInfo.end(), [effect](GOTargetInfo const& targetInfo)
+    {
+        return targetInfo.EffectMask & (1 << effect);
+    });
+}
+
+int64 Spell::GetItemTargetCountForEffect(SpellEffIndex effect) const
+{
+    return std::count_if(m_UniqueItemInfo.begin(), m_UniqueItemInfo.end(), [effect](ItemTargetInfo const& targetInfo)
+    {
+        return targetInfo.EffectMask & (1 << effect);
+    });
+}
+
 void Spell::TargetInfo::PreprocessTarget(Spell* spell)
 {
     Unit* unit = spell->m_caster->GetGUID() == TargetGUID ? spell->m_caster->ToUnit() : ObjectAccessor::GetUnit(*spell->m_caster, TargetGUID);
@@ -2817,7 +2841,6 @@ SpellMissInfo Spell::PreprocessSpellHit(Unit* unit, bool scaleAura, TargetInfo& 
     {
         player->StartTimedAchievement(ACHIEVEMENT_TIMED_TYPE_SPELL_TARGET, m_spellInfo->Id);
         player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_BE_SPELL_TARGET, m_spellInfo->Id, 0, m_caster);
-        player->UpdateAchievementCriteria(ACHIEVEMENT_CRITERIA_TYPE_BE_SPELL_TARGET2, m_spellInfo->Id);
     }
 
     if (Player* player = m_caster->ToPlayer())
@@ -3379,6 +3402,11 @@ void Spell::cancel(SpellCastResult result /*= SPELL_FAILED_INTERRUPTED*/, Option
     if (m_selfContainer && *m_selfContainer == this)
         *m_selfContainer = nullptr;
 
+    //npcbot: bot original caster can be removed from world during SPELL_STATE_DELAYED (Haunt Heal 48210)
+    if (m_originalCaster && m_caster && m_caster != m_originalCaster && m_originalCasterGUID.GetEntry() > BOT_ENTRY_CREATE_BEGIN)
+        m_originalCaster = m_caster->IsInWorld() ? ObjectAccessor::GetCreature(*m_caster, m_originalCasterGUID) : nullptr;
+    //end npcbot
+
     // originalcaster handles gameobjects/dynobjects for gob caster
     if (m_originalCaster)
     {
@@ -3626,14 +3654,19 @@ void Spell::_cast(bool skipCheck)
     }
 
     //npcbot - hook for spellcast finish
-    if (m_caster->GetTypeId() == TYPEID_UNIT && m_caster->ToCreature()->IsNPCBotOrPet())
+    if (m_caster->IsCreature() && m_caster->ToCreature()->IsNPCBotOrPet())
         BotMgr::OnBotSpellGo(m_caster->ToCreature(), this);
     //npcbot - hook for master's spellcast finish
-    else if (m_caster->GetTypeId() == TYPEID_PLAYER && m_caster->ToPlayer()->HaveBot())
+    else if (m_caster->IsPlayer() && m_caster->ToPlayer()->HaveBot())
         BotMgr::OnBotOwnerSpellGo(m_caster->ToPlayer(), this);
     //npcbot - hook for master's vehicle spellcast finish
-    else if (m_caster->ToUnit() && m_caster->ToUnit()->IsVehicle())
+    else if (m_caster->IsUnit() && m_caster->ToUnit()->IsVehicle())
         BotMgr::OnVehicleSpellGo(m_caster->ToUnit(), this);
+    //end npcbot
+
+    //npcbot
+    if (m_caster->IsUnit())
+        m_caster->ToUnit()->SetLastSpellGoTime(GameTime::Now());
     //end npcbot
 
     CallScriptAfterCastHandlers();
@@ -4877,18 +4910,19 @@ void Spell::TakeCastItem()
 
     for (int i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
     {
-        if (proto->Spells[i].SpellId > 0)
+        ItemEffect const& itemEffect = proto->Effects[i];
+        if (itemEffect.SpellID > 0)
         {
             // item has limited charges
-            if (proto->Spells[i].SpellCharges)
+            if (itemEffect.Charges)
             {
-                if (proto->Spells[i].SpellCharges < 0)
+                if (itemEffect.Charges < 0)
                     expendable = true;
 
                 int32 charges = m_CastItem->GetSpellCharges(i);
 
                 // item has charges left for this slot
-                if (charges && proto->Spells[i].SpellId == int32(m_spellInfo->Id))
+                if (charges && itemEffect.SpellID == int32(m_spellInfo->Id))
                 {
                     (charges > 0) ? --charges : ++charges;  // abs(charges) less at 1 after use
                     if (proto->Stackable == 1)
@@ -5214,7 +5248,7 @@ void Spell::TakeReagents()
             {
                 // CastItem will be used up and does not count as reagent
                 int32 charges = ASSERT_NOTNULL(m_CastItem)->GetSpellCharges(s);
-                if (castItemTemplate->Spells[s].SpellCharges < 0 && abs(charges) < 2)
+                if (castItemTemplate->Effects[s].Charges < 0 && abs(charges) < 2)
                 {
                     ++itemcount;
                     break;
@@ -5300,7 +5334,7 @@ void Spell::HandleEffects(Unit* pUnitTarget, Item* pItemTarget, GameObject* pGoT
     destTarget = &m_destTargets[spellEffectInfo.EffectIndex]._position;
     effectInfo = &spellEffectInfo;
 
-    // we do not need DamageMultiplier here.
+    // we do not need ChainAmplitude here.
     damage = CalculateDamage(spellEffectInfo);
 
     bool preventDefault = CallScriptEffectHandlers(spellEffectInfo.EffectIndex, mode);
@@ -5437,7 +5471,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* param1 /*= nullptr*/, uint
         {
             if (m_spellInfo->CasterAuraState && !unitCaster->HasAuraState(AuraStateType(m_spellInfo->CasterAuraState), m_spellInfo, unitCaster))
                 return SPELL_FAILED_CASTER_AURASTATE;
-            if (m_spellInfo->CasterAuraStateNot && unitCaster->HasAuraState(AuraStateType(m_spellInfo->CasterAuraStateNot), m_spellInfo, unitCaster))
+            if (m_spellInfo->ExcludeCasterAuraState && unitCaster->HasAuraState(AuraStateType(m_spellInfo->ExcludeCasterAuraState), m_spellInfo, unitCaster))
                 return SPELL_FAILED_CASTER_AURASTATE;
 
             // Note: spell 62473 requres casterAuraSpell = triggering spell
@@ -6226,7 +6260,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* param1 /*= nullptr*/, uint
 
                     if (!target->GetCharmerGUID().IsEmpty())
                         return SPELL_FAILED_CANT_BE_CHARMED;
- 
+
                     //npcbot: do not allow to charm owned npcbots
                     if (target->GetCreator() && target->GetCreator()->IsPlayer())
                         return SPELL_FAILED_TARGET_IS_PLAYER_CONTROLLED;
@@ -6258,7 +6292,7 @@ SpellCastResult Spell::CheckCast(bool strict, uint32* param1 /*= nullptr*/, uint
                 InstanceTemplate const* it = sObjectMgr->GetInstanceTemplate(unitCaster->GetMapId());
                 if (it)
                     allowMount = it->AllowMount;
-                if (unitCaster->GetTypeId() == TYPEID_PLAYER && !allowMount && !m_spellInfo->AreaGroupId)
+                if (unitCaster->GetTypeId() == TYPEID_PLAYER && !allowMount && !m_spellInfo->RequiredAreasID)
                     return SPELL_FAILED_NO_MOUNTS_ALLOWED;
 
                 if (unitCaster->IsInDisallowedMountForm())
@@ -6895,7 +6929,7 @@ SpellCastResult Spell::CheckItems(uint32* param1 /*= nullptr*/, uint32* param2 /
             return SPELL_FAILED_ITEM_NOT_READY;
 
         for (uint8 i = 0; i < MAX_ITEM_PROTO_SPELLS; ++i)
-            if (proto->Spells[i].SpellCharges)
+            if (proto->Effects[i].Charges)
                 if (m_CastItem->GetSpellCharges(i) == 0)
                     return SPELL_FAILED_NO_CHARGES_REMAIN;
 
@@ -7000,7 +7034,7 @@ SpellCastResult Spell::CheckItems(uint32* param1 /*= nullptr*/, uint32* param2 /
                     {
                         // CastItem will be used up and does not count as reagent
                         int32 charges = m_CastItem->GetSpellCharges(s);
-                        if (proto->Spells[s].SpellCharges < 0 && abs(charges) < 2)
+                        if (proto->Effects[s].Charges < 0 && abs(charges) < 2)
                         {
                             ++itemcount;
                             break;
@@ -7150,12 +7184,10 @@ SpellCastResult Spell::CheckItems(uint32* param1 /*= nullptr*/, uint32* param2 /
                     return SPELL_FAILED_HIGHLEVEL;
 
                 bool isItemUsable = false;
-                for (uint8 e = 0; e < MAX_ITEM_PROTO_SPELLS; ++e)
+                ItemTemplate const* proto = targetItem->GetTemplate();
+                for (ItemEffect const& itemEffect : proto->Effects)
                 {
-                    ItemTemplate const* proto = targetItem->GetTemplate();
-                    if (proto->Spells[e].SpellId > 0 && (
-                        proto->Spells[e].SpellTrigger == ITEM_SPELLTRIGGER_ON_USE ||
-                        proto->Spells[e].SpellTrigger == ITEM_SPELLTRIGGER_ON_NO_DELAY_USE))
+                    if (itemEffect.SpellID > 0 && itemEffect.TriggerType == ITEM_SPELLTRIGGER_ON_USE)
                     {
                         isItemUsable = true;
                         break;
@@ -7403,7 +7435,7 @@ SpellCastResult Spell::CheckItems(uint32* param1 /*= nullptr*/, uint32* param2 /
                  if (Item* pitem = player->GetItemByEntry(item_id))
                  {
                      for (int x = 0; x < MAX_ITEM_PROTO_SPELLS; ++x)
-                         if (pProto->Spells[x].SpellCharges != 0 && pitem->GetSpellCharges(x) == pProto->Spells[x].SpellCharges)
+                         if (pProto->Effects[x].Charges != 0 && pitem->GetSpellCharges(x) == pProto->Effects[x].Charges)
                              return SPELL_FAILED_ITEM_AT_MAX_CHARGES;
                  }
                  break;
@@ -8068,7 +8100,7 @@ void Spell::DoEffectOnLaunchTarget(TargetInfo& targetInfo, float multiplier, Spe
             if (m_originalCaster->GetTypeId() == TYPEID_PLAYER)
             {
                 // cap damage of player AOE
-                uint32 targetAmount = m_UniqueTargetInfo.size();
+                int64 targetAmount = GetUnitTargetCountForEffect(spellEffectInfo.EffectIndex);
                 if (targetAmount > 10)
                     m_damage = m_damage * 10 / targetAmount;
             }

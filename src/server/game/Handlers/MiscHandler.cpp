@@ -33,10 +33,12 @@
 #include "GossipDef.h"
 #include "Group.h"
 #include "GuildMgr.h"
+#include "InspectPackets.h"
 #include "Language.h"
 #include "Log.h"
 #include "MapManager.h"
 #include "MiscPackets.h"
+#include "MovementPackets.h"
 #include "Object.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
@@ -913,19 +915,16 @@ void WorldSession::HandlePlayedTime(WorldPackets::Character::PlayedTimeClient& p
     SendPacket(playedTime.Write());
 }
 
-void WorldSession::HandleInspectOpcode(WorldPacket& recvData)
+void WorldSession::HandleInspectOpcode(WorldPackets::Inspect::Inspect& inspect)
 {
-    ObjectGuid guid;
-    recvData >> guid;
-
-    TC_LOG_DEBUG("network", "WORLD: Received CMSG_INSPECT");
-
-    Player* player = ObjectAccessor::GetPlayer(*_player, guid);
+    Player* player = ObjectAccessor::GetPlayer(*_player, inspect.Target);
     if (!player)
     {
-        TC_LOG_DEBUG("network", "CMSG_INSPECT: No player found from {}", guid.ToString());
+        TC_LOG_DEBUG("network", "CMSG_INSPECT: No player found from {}", inspect.Target.ToString());
         return;
     }
+
+    TC_LOG_DEBUG("network", "WorldSession::HandleInspectOpcode: Target {}.", inspect.Target.ToString());
 
     if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
         return;
@@ -933,22 +932,22 @@ void WorldSession::HandleInspectOpcode(WorldPacket& recvData)
     if (GetPlayer()->IsValidAttackTarget(player))
         return;
 
-    uint32 talent_points = 0x47;
-    uint32 guid_size = player->GetPackGUID().size();
-    WorldPacket data(SMSG_INSPECT_TALENT, guid_size+4+talent_points);
-    data << player->GetPackGUID();
+    WorldPackets::Inspect::InspectResult inspectResult;
+    inspectResult.InspecteeGUID = inspect.Target;
 
-    if (GetPlayer()->CanBeGameMaster() || sWorld->getIntConfig(CONFIG_TALENTS_INSPECTING) + (GetPlayer()->GetTeamId() == player->GetTeamId()) > 1)
-        player->BuildPlayerTalentsInfoData(&data);
-    else
+    for (uint8 i = 0; i < EQUIPMENT_SLOT_END; ++i)
     {
-        data << uint32(0);                                  // unspentTalentPoints
-        data << uint8(0);                                   // talentGroupCount
-        data << uint8(0);                                   // talentGroupIndex
+        if (Item* item = player->GetItemByPos(INVENTORY_SLOT_BAG_0, i))
+        {
+            inspectResult.ItemSlots[i] = true;
+            inspectResult.Items.emplace_back(item);
+        }
     }
 
-    player->BuildEnchantmentsInfoData(&data);
-    SendPacket(&data);
+    if (GetPlayer()->CanBeGameMaster() || sWorld->getIntConfig(CONFIG_TALENTS_INSPECTING) + (GetPlayer()->GetTeamId() == player->GetTeamId()) > 1)
+        player->BuildPlayerTalentsInfoData(inspectResult.TalentInfo);
+
+    SendPacket(inspectResult.Write());
 }
 
 void WorldSession::HandleInspectHonorStatsOpcode(WorldPacket& recvData)
@@ -1402,9 +1401,10 @@ void WorldSession::HandleUpdateMissileTrajectory(WorldPacket& recvPacket)
 
     if (moveStop)
     {
-        uint32 opcode;
-        recvPacket >> opcode;
-        recvPacket.SetOpcode(opcode);
-        HandleMovementOpcodes(recvPacket);
+        OpcodeClient opcode = static_cast<OpcodeClient>(recvPacket.read<uint32>());
+        MovementInfo movementInfo;
+        recvPacket >> movementInfo.guid.ReadAsPacked();
+        recvPacket >> movementInfo;
+        HandleMovementOpcode(opcode, movementInfo);
     }
 }
